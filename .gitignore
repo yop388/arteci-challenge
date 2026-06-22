@@ -1,0 +1,17 @@
+# python
+__pycache__
+*.pyc
+.venv/
+
+# Rust
+/api/bin/
+/target/
+
+# IDE & OS
+.vscode/
+.DS_Store
+*.log
+
+# Fichier de données volumineux
+*.csv
+*.xlsx
