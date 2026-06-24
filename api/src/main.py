@@ -39,7 +39,7 @@ def get_minio_client():
 
 class ProcessDateRequest(BaseModel):
     bucket: str = Field(..., description="Nom du compartiment d'entrée", example="raw")
-    file: str = Field(..., description="Nom ou chemin du fichier CSV", example="1st_of_users_anon_1.csv")
+    file: str = Field(..., description="Nom ou chemin du fichier CSV", example="lst_of_users_anon_1.csv")
     date_columns: List[str] = Field(..., description="Liste des colonnes à normaliser", example=["created_at", "updated_date"])
     date_formats: List[str] = Field(..., description="Priorité de format par colonne ('DMY' ou 'MDY')", example=["DMY", "MDY"])
     engine: Optional[str] = Field("polars", description="Moteur de traitement: 'pandas' ou 'polars'")
