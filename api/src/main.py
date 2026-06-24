@@ -1,10 +1,15 @@
 import io
 import csv
-from typing import List
+from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 import boto3
 from botocore.client import Config
+import pandas as pd
+import polars as pl
+
+# Import de notre parseur robuste créé à l'étape précédente
+from api.src.parsers.date_parser import parse_date_cell
 
 app = FastAPI(
     title="API ARTECI - Normalisation de Dates",
@@ -34,9 +39,10 @@ def get_minio_client():
 
 class ProcessDateRequest(BaseModel):
     bucket: str = Field(..., description="Nom du compartiment d'entrée", example="raw")
-    file: str = Field(..., description="Nom ou chemin du fichier CSV", example="sample_dates.csv")
+    file: str = Field(..., description="Nom ou chemin du fichier CSV", example="1st_of_users_anon_1.csv")
     date_columns: List[str] = Field(..., description="Liste des colonnes à normaliser", example=["created_at", "updated_date"])
     date_formats: List[str] = Field(..., description="Priorité de format par colonne ('DMY' ou 'MDY')", example=["DMY", "MDY"])
+    engine: Optional[str] = Field("polars", description="Moteur de traitement: 'pandas' ou 'polars'")
 
 # ---------------------------------------------------------------------------
 # ENDPOINTS
@@ -59,7 +65,8 @@ def get_columns(
         if file_extension == 'csv':
             response = s3_client.get_object(Bucket=bucket, Key=file, Range='bytes=0-4096')
             text_chunk = response['Body'].read().decode('utf-8')
-            csv_reader = csv.reader(io.StringIO(text_chunk))
+            # Remplacer la ligne csv.reader par celle-ci pour gérer le point-virgule :
+            csv_reader = csv.reader(io.StringIO(text_chunk), delimiter=';')
             return {"columns": next(csv_reader)}
 
         # --- CAS 2 : FICHIER EXCEL (.xlsx) ---
@@ -80,38 +87,108 @@ def get_columns(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @app.post("/processDate")
 def process_date(payload: ProcessDateRequest):
-    """
-    Reçoit les paramètres de normalisation, valide la cohérence des listes,
-    et renvoie une réponse factice (MOCK / TODO) contenant un aperçu statique.
-    """
-    # Validation logique personnalisée : vérifier que le nombre de formats correspond au nombre de colonnes
-    if len(payload.date_columns) != len(payload.date_formats):
-        raise HTTPException(
-            status_code=420, 
-            detail="La liste 'date_columns' et la liste 'date_formats' doivent avoir exactement la même taille."
-        )
+    s3_client = get_minio_client()
     
-    # Validation des choix de formats supportés
-    for fmt in payload.date_formats:
-        if fmt not in ["DMY", "MDY"]:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Format '{fmt}' non supporté. Les valeurs autorisées sont uniquement 'DMY' ou 'MDY'."
-            )
+    # 1. Validation de l'existence du fichier d'entrée
+    try:
+        s3_object = s3_client.get_object(Bucket=payload.bucket, Key=payload.file)
+        file_bytes = s3_object['Body'].read()
+    except s3_client.exceptions.NoSuchBucket:
+        raise HTTPException(status_code=404, detail=f"Bucket source '{payload.bucket}' introuvable.")
+    except s3_client.exceptions.NoSuchKey:
+        raise HTTPException(status_code=404, detail=f"Fichier '{payload.file}' introuvable dans le bucket.")
 
-    # Réponse factice (MOCK) simulant l'aperçu des 100 premières lignes requis par le cahier des charges
-    # TODO: Remplacer ce bloc par l'exécution de votre logique Polars/Rust lors de la prochaine étape
-    mock_preview = [
-        {"id": "1", "username": "alice", "created_at": "25-12-2024 14:30:00", "updated_date": "25-12-2024 00:00:00"},
-        {"id": "2", "username": "bob", "created_at": "15-06-2024 08:12:00", "updated_date": "15-06-2024 08:12:00"},
-        {"id": "3", "username": "charlie", "created_at": "malformed_date", "updated_date": "31-12-2024 23:59:59"}
-    ]
+    # 2. Validation des formats
+    if len(payload.date_columns) != len(payload.date_formats):
+        raise HTTPException(status_code=400, detail="Les listes de colonnes et de formats doivent être de même taille.")
+
+    # =========================================================================
+    # ÉTAPE 2-A : MOTEUR PANDAS (Baseline)
+    # =========================================================================
+    if payload.engine == "pandas":
+        try:
+            df_pd = pd.read_csv(io.BytesIO(file_bytes), sep=';')
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Erreur de lecture CSV (Pandas) : {str(e)}")
+
+        # Validation de l'existence des colonnes
+        for col in payload.date_columns:
+            if col not in df_pd.columns:
+                raise HTTPException(status_code=400, detail=f"Colonne '{col}' absente. Colonnes disponibles : {list(df_pd.columns)}")
+
+        # Application du parsing
+        for col, hint in zip(payload.date_columns, payload.date_formats):
+            df_pd[col] = df_pd[col].apply(lambda v: parse_date_cell(v, hint))
+
+        # Aperçu et export mémoire
+        preview_data = df_pd.head(100).to_dict(orient="records")
+        output_buffer = io.BytesIO()
+        df_pd.to_csv(output_buffer, index=False)
+        output_buffer.seek(0)
+
+    # =========================================================================
+    # ÉTAPE 2-B : MOTEUR POLARS (Version optimisée)
+    # =========================================================================
+    # =========================================================================
+    # ÉTAPE 2-B : MOTEUR POLARS (Version Réellement Optimisée)
+    # =========================================================================
+    else:
+        try:
+            # On charge tout en texte (String)
+            df_pl = pl.read_csv(io.BytesIO(file_bytes), infer_schema_length=0, separator=';')
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Erreur de lecture CSV (Polars) : {str(e)}")
+
+        for col in payload.date_columns:
+            if col not in df_pl.columns:
+                raise HTTPException(status_code=400, detail=f"Colonne '{col}' absente.")
+
+        # Application du parsing purement vectoriel (Exécuté à 100% en C++/Rust)
+        for col, hint in zip(payload.date_columns, payload.date_formats):
+            
+            # 1. Définition des formats prioritaires selon le hint
+            if hint == 'DMY':
+                formats = ["%d/%m/%Y %H:%M:%S", "%d-%m-%Y %H:%M:%S", "%d.%m.%Y %H:%M:%S", "%d/%m/%Y", "%d-%m-%Y"]
+            else:
+                formats = ["%m/%d/%Y %H:%M:%S", "%m-%d-%Y %H:%M:%S", "%m/%d/%Y", "%m-%d-%Y"]
+                
+            # Formats secondaires de secours (ISO, etc.)
+            formats.extend(["%Y-%m-%dT%H:%M:%S%.fZ", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"])
+
+            # 2. Construction de la cascade de tentatives native
+            # Tentative avec le premier format
+            parsed_expr = pl.col(col).str.to_datetime(formats[0], strict=False)
+            
+            # Remplacement des échecs (Nulls) par les formats suivants
+            for fmt in formats[1:]:
+                parsed_expr = parsed_expr.fill_null(pl.col(col).str.to_datetime(fmt, strict=False))
+                
+            # 3. Formatage final vers la chaîne cible : 'JJ-MM-AAAA HH:mm:ss'
+            # Règle métier : si le parsing a échoué partout (Null), on réinjecte la valeur d'origine pl.col(col)
+            final_expr = parsed_expr.dt.strftime("%d-%m-%Y %H:%M:%S").fill_null(pl.col(col))
+            
+            # Application instantanée sur la colonne
+            df_pl = df_pl.with_columns(final_expr.alias(col))
+
+        preview_data = df_pl.head(100).to_dicts()
+        output_buffer = io.BytesIO()
+        df_pl.write_csv(output_buffer)
+        output_buffer.seek(0)
+
+    # 3. Sauvegarde dans le bucket 'processeddata' avec remplacement sans doublon
+    try:
+        s3_client.put_object(
+            Bucket="processeddata",
+            Key=payload.file,
+            Body=output_buffer.getvalue()
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur d'écriture MinIO : {str(e)}")
 
     return {
         "status": "success",
-        "message": "Traitement simulé avec succès (Logique de parsing en cours d'intégration).",
-        "preview": mock_preview
+        "engine_used": payload.engine,
+        "preview": preview_data
     }
