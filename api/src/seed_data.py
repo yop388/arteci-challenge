@@ -10,7 +10,7 @@ BUCKET_NAME = "raw"
 
 # remplacer ceci par le chemin absolu de l'un de notre CSV fournis
 # Pour le test, nous créons un faux fichier CSV à la volée s'il n'existe pas
-CSV_FILE_PATH = "/home/othniel/Téléchargements/Challenge ARTEFACT Recrutement/lst_of_users_anon_1.csv"
+CSV_FILE_PATH = "/home/othniel/Téléchargements/Challenge ARTEFACT Recrutement/lst_of_users_anon_3.csv"
 
 def create_sample_csv():
     """Génère un fichier CSV local contenant des formats de date mixtes."""

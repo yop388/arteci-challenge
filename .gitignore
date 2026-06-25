@@ -5,6 +5,7 @@ __pycache__/
 globalenv/
 venv/
 .pytest_cache/
+*.y_backup
 
 # Rust (Artefacts de compilation)
 /target/

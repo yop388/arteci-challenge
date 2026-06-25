@@ -5,7 +5,7 @@ import requests
 payload_pandas = {
     "bucket": "raw",
     "file": "lst_of_users_anon_1.csv",
-    "date_columns": ["DATE_CREATION", "DATE_DESACTIVATION", "DATE_DERNIERE_CONNECTION_1"], # Adapte avec les vrais noms de colonnes si besoin
+    "date_columns": ["DATE_CREATION", "DATE_DESACTIVATION", "DATE_DERNIERE_CONNECTION_1"], 
     "date_formats": ["MDY", "MDY", "MDY"],
     "engine": "pandas"
 }
@@ -22,26 +22,20 @@ payload_rust = {
 
 def run_bench(url, payload, name):
     print(f"--- En cours : {name} ---")
-    times = []
-    # Règle du guide : Exécuter 3 fois pour noter la médiane
-    for i in range(3):
-        t0 = time.time()
-        r = requests.post(url, json=payload)
-        duration = time.time() - t0
-        if r.status_code == 200:
-            times.append(duration)
-            print(f"  Lancer {i+1} : {duration:.2f}s")
-        else:
-            print(f"  Erreur Lancer {i+1} (Status {r.status_code}): {r.text}")
-            return None
     
-    times.sort()
-    mediane = times[1] # La valeur du milieu sur 3 lancers
-    print(f"-> Médiane {name} : {mediane:.2f}s\n")
-    return mediane
+    t0 = time.time()
+    r = requests.post(url, json=payload)
+    duration = time.time() - t0
+    
+    if r.status_code == 200:
+        print(f"-> Temps d'exécution {name} : {duration:.2f}s\n")
+        return duration
+    else:
+        print(f"  Erreur (Status {r.status_code}): {r.text}\n")
+        return None
 
 if __name__ == "__main__":
-    print("Début du Benchmark Global...\n")
+    print("Début du Benchmark Global (1 seul lancer par moteur)...\n")
     
     # 1. Test Pandas
     bench_pd = run_bench("http://localhost:8000/processDate", payload_pandas, "Pandas (FastAPI)")
