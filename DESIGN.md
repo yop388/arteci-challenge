@@ -78,3 +78,20 @@ Les grandes familles de formats prises en charge incluent :
 Le flux suit une architecture découplée où l'API manipule directement le stockage (MinIO) :
 
 ![Schéma du flux de données](docs/Schema_flux_donnees.png)
+
+## Décision d'Architecture - Choix du Langage Final
+
+À la suite des tests de montée en charge (Stress Tests) sur des volumes critiques allant jusqu'à près de 1 Go (10,7 millions de lignes), le choix architectural final se porte sur **Polars (Python)** pour l'environnement de production.
+
+### Justification et Analyse Hardware (Passage à l'échelle)
+
+L'analyse du comportement des ressources sur le fichier de 931 Mo révèle une inversion des performances cruciale liée à l'architecture des moteurs et aux limites de notre matériel (RAM DDR3 1060 MT/s) :
+
+1. **Polars (Optimisation Vectorielle et Multi-threadée) - 47.96s [RETENU] :**
+   Sur un très grand volume, Polars démontre sa supériorité en exploitant **100% des capacités du CPU**. Grâce à son cœur écrit en Rust et son modèle de données basé sur Apache Arrow, il traite les colonnes par blocs contigus en mémoire. Cela limite drastiquement les allocations dynamiques, maintenant la consommation de RAM à un niveau bas et évitant le bridage par notre mémoire RAM DDR3 lente.
+
+2. **Rust Axum (Approche Séquentielle Row-by-Row) - 134.40s :**
+   Bien que performante sur de petits fichiers, l'implémentation Rust actuelle traite le CSV ligne par ligne. Sur 10,7 millions de lignes, l'allocation et la désallocation répétées de chaînes de caractères créent un phénomène d'engorgement de la mémoire (Memory Churn), faisant grimper l'occupation de la RAM à **85%**. Limité par la vitesse de transfert de la DDR3 (1060 MT/s), le CPU reste en attente, ce qui dégrade fortement le temps de traitement.
+
+### Conclusion
+Polars surpasse largement Rust (facteur de **2.8x** en faveur de Polars). De plus, conserver Polars en Python apporte un gain substantiel en termes de maintenabilité pour l'équipe DevOps. C'est pourquoi **Polars est sélectionné comme moteur final**.

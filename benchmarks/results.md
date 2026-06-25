@@ -7,3 +7,14 @@
 
 ### Analyse technique
 L'implémentation naïve avec Pandas force l'utilisation du Global Interpreter Lock (GIL) de Python pour traiter les lignes une par une. L'optimisation Polars utilise des expressions natives compilées, éliminant le surcoût de l'interpréteur Python et parallélisant efficacement le parsing de la cascade sur l'ensemble des cœurs CPU disponibles.
+
+# Résultats du Benchmark Global (Version Corrigée)
+
+* **Environnement de test :** Machine locale (12 Go RAM DDR3 1060 MT/s, CPU multi-cœurs).
+* **Méthodologie :** Mesure complète de l'appel HTTP (Téléchargement MinIO -> Parsing -> Écriture MinIO). Médiane sur 3 lancers.
+
+| Fichier | Taille | Lignes | Pandas (s) | Polars (s) | Rust (s) | Comportement Matériel Observé |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `lst_of_users_anon_1.csv` | ~28 Mo | 320 399 | 115.12s | 10.19s | 3.75s | Rust plus rapide sur petit volume (pas d'overhead). |
+| `lst_of_users_anon_2.csv` | ~182 Mo | 2 119 517 | *N/A* | 44.15s | 17.51s | Transition de charge. |
+| `lst_of_users_anon_3.csv` | ~931 Mo | 10 799 773 | *N/A* | **47.96s** | **134.40s** | Polars sature le CPU à 100% (gagnant). Rust sature la RAM à 85%. |
