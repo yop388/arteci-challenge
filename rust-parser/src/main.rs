@@ -11,6 +11,9 @@ use std::io::Cursor;
 use chrono::NaiveDateTime;
 use aws_sdk_s3::{Client, config::{Credentials, Region}};
 
+// Import de Rayon pour le multi-threading de données
+use rayon::prelude::*;
+
 #[derive(Deserialize)]
 struct ProcessDateRequest {
     bucket: String,
@@ -57,11 +60,11 @@ fn parse_date_cell(value: &str, hint: &str) -> String {
     value.to_string()
 }
 
-// Initialisation du client S3 configuré pour MinIO (Version Corrigée)
+// Initialisation du client S3 configuré pour MinIO
 async fn get_minio_client() -> Client {
     let credentials = Credentials::new(
-        "minioadmin",         // Identifiant de ta stack
-        "minioadminpassword", // Mot de passe de ta stack
+        "minioadmin",
+        "minioadminpassword",
         None,
         None,
         "manual",
@@ -70,11 +73,10 @@ async fn get_minio_client() -> Client {
     let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
         .credentials_provider(credentials)
         .region(Region::new("us-east-1"))
-        .endpoint_url("http://localhost:9000") // URL locale de MinIO
+        .endpoint_url("http://localhost:9000")
         .load()
         .await;
 
-    // CRUCIAL POUR MINIO LOCAL : Forcer force_path_style à true
     let s3_config = aws_sdk_s3::config::Builder::from(&config)
         .force_path_style(true)
         .build();
@@ -123,12 +125,12 @@ async fn process_date_handler(
         }
     };
 
-    // 2. Traitement du CSV avec le séparateur ';' (identique à ton code Python)
+    // 2. Initialisation du lecteur CSV
     let mut reader = csv::ReaderBuilder::new()
         .delimiter(b';')
         .from_reader(Cursor::new(data_bytes));
 
-    // Récupération des en-têtes pour localiser l'index des colonnes à traiter
+    // Récupération des en-têtes
     let headers = match reader.headers() {
         Ok(h) => h.clone(),
         Err(_) => {
@@ -160,36 +162,41 @@ async fn process_date_handler(
         }
     }
 
-    // Préparation de l'écriture du nouveau CSV nettoyé
+    // Phase A : Collecter toutes les lignes de manière séquentielle en mémoire
+    let records: Vec<csv::StringRecord> = reader
+        .records()
+        .filter_map(|r| r.ok())
+        .collect();
+
+    // Phase B : Traitement parallèle vectorisé sur tous les cœurs CPU avec Rayon
+    let processed_records: Vec<Vec<String>> = records
+        .par_iter()
+        .map(|record| {
+            let mut new_record = Vec::with_capacity(record.len());
+            for (idx, field) in record.iter().enumerate() {
+                if let Some(pos) = target_indices.iter().position(|&i| i == idx) {
+                    let hint = &payload.date_formats[pos];
+                    let parsed_value = parse_date_cell(field, hint);
+                    new_record.push(parsed_value);
+                } else {
+                    new_record.push(field.to_string());
+                }
+            }
+            new_record
+        })
+        .collect();
+
+    // Phase C : Reconstitution séquentielle du tampon CSV final
     let mut writer = csv::WriterBuilder::new()
         .delimiter(b';')
         .from_writer(vec![]);
 
-    // Écrire les en-têtes originaux dans le nouveau fichier
     if writer.write_record(&headers).is_err() {
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(ProcessResponse { status: "error".into(), engine_used: "rust".into(), message: "Erreur d'écriture".into() }));
     }
 
-    // Itération sur chaque ligne du fichier pour appliquer le parsing à la volée
-    for result in reader.records() {
-        let record = match result {
-            Ok(r) => r,
-            Err(_) => continue, // Ignore les lignes corrompues pour ne pas bloquer le traitement complet
-        };
-
-        let mut new_record = Vec::new();
-        for (idx, field) in record.iter().enumerate() {
-            // Si l'index actuel correspond à une colonne de date à traiter
-            if let Some(pos) = target_indices.iter().position(|&i| i == idx) {
-                let hint = &payload.date_formats[pos];
-                let parsed_value = parse_date_cell(field, hint);
-                new_record.push(parsed_value);
-            } else {
-                new_record.push(field.to_string());
-            }
-        }
-        
-        if writer.write_record(&new_record).is_err() {
+    for row in processed_records {
+        if writer.write_record(&row).is_err() {
             return (StatusCode::INTERNAL_SERVER_ERROR, Json(ProcessResponse { status: "error".into(), engine_used: "rust".into(), message: "Erreur d'écriture".into() }));
         }
     }
@@ -199,7 +206,7 @@ async fn process_date_handler(
         Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(ProcessResponse { status: "error".into(), engine_used: "rust".into(), message: "Erreur tampon interne".into() })),
     };
 
-    // 3. Sauvegarde immédiate dans le bucket "processeddata" [cite: 79]
+    // 3. Sauvegarde immédiate dans le bucket "processeddata"
     let body_stream = aws_sdk_s3::primitives::ByteStream::from(final_csv_bytes);
     if let Err(err) = s3_client
         .put_object()
@@ -235,7 +242,6 @@ async fn main() {
 
     let app = Router::new().route("/processDate", post(process_date_handler));
 
-    // Utilisation du port 8001 pour coexister avec FastAPI (port 8000)
     let addr = SocketAddr::from(([127, 0, 0, 1], 8001));
     tracing::info!("Serveur Rust API démarré sur http://{}", addr);
     

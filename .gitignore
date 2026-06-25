@@ -1,25 +1,24 @@
-# python
-__pycache__
+# Python (Artefacts de compilation & environnements)
+__pycache__/
 *.pyc
 .venv/
+globalenv/
+venv/
+.pytest_cache/
 
-# Rust
-/api/bin/
+# Rust (Artefacts de compilation)
 /target/
+/api/bin/
+Cargo.lock.bak
+
+# Secrets (À ne JAMAIS commit)
+.env
 
 # IDE & OS
 .vscode/
 .DS_Store
 *.log
 
-# Fichier de données volumineux
+# Fichiers de données volumineux (Ne pas encombrer le dépôt)
 *.csv
 *.xlsx
-# Outils de test et configuration
-pytest.ini
-.pytest_cache/
-
-# Environnements virtuels (globalenv, .env, venv)
-globalenv/
-.env
-venv/
