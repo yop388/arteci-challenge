@@ -15,3 +15,11 @@ __pycache__
 # Fichier de données volumineux
 *.csv
 *.xlsx
+# Outils de test et configuration
+pytest.ini
+.pytest_cache/
+
+# Environnements virtuels (globalenv, .env, venv)
+globalenv/
+.env
+venv/

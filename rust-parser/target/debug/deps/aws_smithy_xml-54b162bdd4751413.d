@@ -1,0 +1,9 @@
+/home/othniel/Téléchargements/Challenge ARTEFACT Recrutement/arteci-challenge/rust-parser/target/debug/deps/aws_smithy_xml-54b162bdd4751413.d: /home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-smithy-xml-0.60.15/src/lib.rs /home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-smithy-xml-0.60.15/src/decode.rs /home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-smithy-xml-0.60.15/src/encode.rs /home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-smithy-xml-0.60.15/src/escape.rs /home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-smithy-xml-0.60.15/src/unescape.rs
+
+/home/othniel/Téléchargements/Challenge ARTEFACT Recrutement/arteci-challenge/rust-parser/target/debug/deps/libaws_smithy_xml-54b162bdd4751413.rmeta: /home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-smithy-xml-0.60.15/src/lib.rs /home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-smithy-xml-0.60.15/src/decode.rs /home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-smithy-xml-0.60.15/src/encode.rs /home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-smithy-xml-0.60.15/src/escape.rs /home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-smithy-xml-0.60.15/src/unescape.rs
+
+/home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-smithy-xml-0.60.15/src/lib.rs:
+/home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-smithy-xml-0.60.15/src/decode.rs:
+/home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-smithy-xml-0.60.15/src/encode.rs:
+/home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-smithy-xml-0.60.15/src/escape.rs:
+/home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-smithy-xml-0.60.15/src/unescape.rs:
