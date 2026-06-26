@@ -14,8 +14,11 @@ services:
       - minio_data:/data
     command: server /data --console-address ":9001"
     restart: unless-stopped
+    networks:
+      - signoz-network # Partage le réseau avec l'API
 
   api:
+    build: .
     image: othnielparfait/arteci-api:latest
     container_name: arteci-api-prod
     ports:
@@ -25,9 +28,19 @@ services:
       - ACCESS_KEY=minioadmin
       - SECRET_KEY=minioadminpassword
       - PYTHONPATH=/app          
+      # --- CORRECTION ICI ---
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://signoz-ingester-1:4317
+      - OTEL_SERVICE_NAME=arteci-api
     depends_on:
       - minio
     restart: unless-stopped
+    networks:
+      - signoz-network # Permet de joindre MinIO et le collecteur SigNoz
 
 volumes:
   minio_data:
+
+# Déclaration du réseau externe créé à l'étape 1
+networks:
+  signoz-network:
+    external: true

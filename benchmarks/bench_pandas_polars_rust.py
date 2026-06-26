@@ -4,7 +4,7 @@ import requests
 # Payload pour le(s) fichier(s) 
 payload_pandas = {
     "bucket": "raw",
-    "file": "lst_of_users_anon_2.csv",
+    "file": "lst_of_users_anon_1.csv",
     "date_columns": ["DATE_CREATION", "DATE_DESACTIVATION", "DATE_DERNIERE_CONNECTION_1"], 
     "date_formats": ["MDY", "MDY", "MDY"],
     "engine": "pandas"
@@ -15,7 +15,7 @@ payload_polars = {**payload_pandas, "engine": "polars"}
 # Pour Rust, l'engine n'est pas requis dans la structure mais le payload reste compatible
 payload_rust = {
     "bucket": "raw",
-    "file": "lst_of_users_anon_3.csv",
+    "file": "lst_of_users_anon_1.csv",
     "date_columns": ["DATE_CREATION", "DATE_DESACTIVATION", "DATE_DERNIERE_CONNECTION_1"],
     "date_formats": ["MDY", "MDY", "MDY"]
 }
@@ -38,7 +38,7 @@ if __name__ == "__main__":
     print("Début du Benchmark Global (1 seul lancer par moteur)...\n")
     
     # 1. Test Pandas
-    #bench_pd = run_bench("http://localhost:8000/processDate", payload_pandas, "Pandas (FastAPI)")
+    bench_pd = run_bench("http://localhost:8000/processDate", payload_pandas, "Pandas (FastAPI)")
     
     # 2. Test Polars
     bench_pl = run_bench("http://localhost:8000/processDate", payload_polars, "Polars (FastAPI)")

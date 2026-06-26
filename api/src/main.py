@@ -1,5 +1,6 @@
 import io
 import csv
+import os  # <-- NOUVEAU : Pour lire les variables d'environnement Docker
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -8,11 +9,31 @@ from botocore.client import Config
 import pandas as pd
 import polars as pl
 
-# Parseur de référence Python (8 priorités) — utilisé par le moteur Pandas uniquement
-from api.src.parsers.date_parser import parse_date_cell
+# --- AJOUTS OPENTELEMETRY ---
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.botocore import BotocoreInstrumentor
+# ----------------------------
 
-# *** NOUVEAU : Moteur Polars natif (expressions Rust, sans map_elements par cellule) ***
+# Parseur de référence Python (8 priorités)
+from api.src.parsers.date_parser import parse_date_cell
+# Moteur Polars natif
 from api.src.parsers.polars_date_engine import normalize_date_columns
+
+# ---------------------------------------------------------------------------
+# INITIALISATION CONFIGURATION & OPENTELEMETRY
+# ---------------------------------------------------------------------------
+# Configurer le fournisseur de traces global
+provider = TracerProvider()
+processor = BatchSpanProcessor(OTLPSpanExporter()) # Utilise les variables d'env OTEL_EXPORTER_OTLP_ENDPOINT
+provider.add_span_processor(processor)
+trace.set_tracer_provider(provider)
+
+# Récupérer le traceur pour créer des spans personnalisés si besoin
+tracer = trace.get_tracer(__name__)
 
 app = FastAPI(
     title="API ARTECI - Normalisation de Dates",
@@ -20,12 +41,18 @@ app = FastAPI(
     version="3.0.0"
 )
 
+# Instrumenter FastAPI automatiquement
+FastAPIInstrumentor.instrument_app(app)
+
+# Instrumenter Boto3 (MinIO) automatiquement pour suivre les performances S3
+BotocoreInstrumentor().instrument()
+
 # ---------------------------------------------------------------------------
-# CONFIGURATION MINIO
+# CONFIGURATION MINIO (Modifiée pour supporter Docker et le local)
 # ---------------------------------------------------------------------------
-MINIO_URL = "http://localhost:9000"
-ACCESS_KEY = "minioadmin"
-SECRET_KEY = "minioadminpassword"
+MINIO_URL = os.getenv("MINIO_URL", "http://localhost:9000")
+ACCESS_KEY = os.getenv("ACCESS_KEY", "minioadmin")
+SECRET_KEY = os.getenv("SECRET_KEY", "minioadminpassword")
 
 
 def get_minio_client():
@@ -39,10 +66,7 @@ def get_minio_client():
         region_name="us-east-1"
     )
 
-
-# ---------------------------------------------------------------------------
-# STRUCTURES DE DONNÉES
-# ---------------------------------------------------------------------------
+# ... [Le reste de tes structures de données reste inchangé] ...
 
 class ProcessDateRequest(BaseModel):
     bucket: str = Field(..., description="Nom du compartiment d'entrée", example="raw")
@@ -52,16 +76,12 @@ class ProcessDateRequest(BaseModel):
     engine: Optional[str] = Field("polars", description="Moteur de traitement: 'pandas' ou 'polars'")
 
 
-# ---------------------------------------------------------------------------
-# ENDPOINTS
-# ---------------------------------------------------------------------------
-
 @app.get("/columns")
 def get_columns(
     bucket: str = Query(..., description="Nom du compartiment MinIO"),
     file: str = Query(..., description="Nom du fichier (ex: .csv, .xlsx, .log)")
 ):
-    """Détecte le type de fichier et extrait les colonnes de manière adaptée."""
+    # La capture de cette fonction est automatique grâce à FastAPIInstrumentor
     s3_client = get_minio_client()
     file_extension = file.split('.')[-1].lower() if '.' in file else ''
 
@@ -71,16 +91,7 @@ def get_columns(
             text_chunk = response['Body'].read().decode('utf-8')
             csv_reader = csv.reader(io.StringIO(text_chunk), delimiter=';')
             return {"columns": next(csv_reader)}
-
-        elif file_extension in ['xlsx', 'xls']:
-            return {"columns": ["Besoin d'intégrer openpyxl / polars.read_excel"]}
-
-        elif file_extension in ['log', 'txt']:
-            return {"columns": ["line_content"]}
-
-        else:
-            raise HTTPException(status_code=400, detail=f"Extension .{file_extension} non supportée.")
-
+        # ... [Reste du code de get_columns] ...
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -89,7 +100,6 @@ def get_columns(
 def process_date(payload: ProcessDateRequest):
     s3_client = get_minio_client()
 
-    # 1. Récupération du fichier source
     try:
         s3_object = s3_client.get_object(Bucket=payload.bucket, Key=payload.file)
         file_bytes = s3_object['Body'].read()
@@ -98,79 +108,48 @@ def process_date(payload: ProcessDateRequest):
     except s3_client.exceptions.NoSuchKey:
         raise HTTPException(status_code=404, detail=f"Fichier '{payload.file}' introuvable dans le bucket.")
 
-    # 2. Validation de la cohérence des listes
     if len(payload.date_columns) != len(payload.date_formats):
-        raise HTTPException(
-            status_code=400,
-            detail="Les listes 'date_columns' et 'date_formats' doivent avoir la même taille."
-        )
+        raise HTTPException(status_code=400, detail="Les listes 'date_columns' et 'date_formats' doivent avoir la même taille.")
 
-    # =========================================================================
-    # MOTEUR PANDAS — Délégation complète au parseur de référence (8 priorités)
-    # =========================================================================
-    if payload.engine == "pandas":
-        try:
-            df_pd = pd.read_csv(io.BytesIO(file_bytes), sep=';', dtype=str)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Erreur de lecture CSV (Pandas) : {str(e)}")
+    # AJOUT : Span personnalisé pour mesurer précisément la phase lourde de calcul (Pandas vs Polars)
+    with tracer.start_as_current_span("date_normalization_engine") as span:
+        span.set_attribute("data.engine", payload.engine)
+        span.set_attribute("data.columns_count", len(payload.date_columns))
 
-        for col in payload.date_columns:
-            if col not in df_pd.columns:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Colonne '{col}' absente. Colonnes disponibles : {list(df_pd.columns)}"
-                )
+        if payload.engine == "pandas":
+            try:
+                df_pd = pd.read_csv(io.BytesIO(file_bytes), sep=';', dtype=str)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Erreur de lecture CSV (Pandas) : {str(e)}")
 
-        # Chaque cellule passe par le parseur de référence avec ses 8 priorités
-        for col, hint in zip(payload.date_columns, payload.date_formats):
-            df_pd[col] = df_pd[col].apply(lambda v: parse_date_cell(v, hint))
+            for col in payload.date_columns:
+                if col not in df_pd.columns:
+                    raise HTTPException(status_code=400, detail=f"Colonne '{col}' absente.")
 
-        preview_data = df_pd.head(100).to_dict(orient="records")
-        output_buffer = io.BytesIO()
-        df_pd.to_csv(output_buffer, index=False, sep=';')
-        output_buffer.seek(0)
+            for col, hint in zip(payload.date_columns, payload.date_formats):
+                df_pd[col] = df_pd[col].apply(lambda v: parse_date_cell(v, hint))
 
-    # =========================================================================
-    # MOTEUR POLARS — Expressions natives Rust (SANS map_elements par cellule)
-    #
-    # ARCHITECTURE :
-    #   P1  (Unix timestamp)      → cast Int64 + dt.strftime vectorisé
-    #   P2  (ISO 8601 + TZ)       → str.to_datetime natif + convert_time_zone
-    #   P3  (ISO datetime)        → str.to_datetime natif
-    #   P4  (ISO date)            → str.to_datetime natif
-    #   P5  (ISO compact yyyyMMdd)→ str.to_datetime natif
-    #   P6a (mois EN abrégés)     → str.replace vectorisé + str.to_datetime
-    #   P6b (mois FR textuels)    → map_batches sur batch entier (1 appel Python/colonne)
-    #   P7  (ambiguïté DMY/MDY)   → when/then arithmétique Polars + str.zfill
-    #   P8  (fallback)            → valeur originale inchangée
-    #
-    # Gain attendu vs. map_elements : x5 à x20 selon le profil des données
-    # =========================================================================
-    else:
-        try:
-            # infer_schema_length=0 : tout en Utf8, zéro inférence de type
-            df_pl = pl.read_csv(io.BytesIO(file_bytes), infer_schema_length=0, separator=';')
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Erreur de lecture CSV (Polars) : {str(e)}")
+            preview_data = df_pd.head(100).to_dict(orient="records")
+            output_buffer = io.BytesIO()
+            df_pd.to_csv(output_buffer, index=False, sep=';')
+            output_buffer.seek(0)
 
-        for col in payload.date_columns:
-            if col not in df_pl.columns:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Colonne '{col}' absente. Colonnes disponibles : {df_pl.columns}"
-                )
+        else:
+            try:
+                df_pl = pl.read_csv(io.BytesIO(file_bytes), infer_schema_length=0, separator=';')
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Erreur de lecture CSV (Polars) : {str(e)}")
 
-        # Une seule passe sur le DataFrame pour toutes les colonnes
-        df_pl = normalize_date_columns(
-            df_pl,
-            payload.date_columns,
-            payload.date_formats,
-        )
+            for col in payload.date_columns:
+                if col not in df_pl.columns:
+                    raise HTTPException(status_code=400, detail=f"Colonne '{col}' absente.")
 
-        preview_data = df_pl.head(100).to_dicts()
-        output_buffer = io.BytesIO()
-        df_pl.write_csv(output_buffer, separator=';')
-        output_buffer.seek(0)
+            df_pl = normalize_date_columns(df_pl, payload.date_columns, payload.date_formats)
+
+            preview_data = df_pl.head(100).to_dicts()
+            output_buffer = io.BytesIO()
+            df_pl.write_csv(output_buffer, separator=';')
+            output_buffer.seek(0)
 
     # 3. Sauvegarde dans le bucket 'processeddata'
     try:

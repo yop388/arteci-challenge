@@ -87,11 +87,11 @@ Le flux suit une architecture découplée où l'API manipule directement le stoc
 
 L'analyse du comportement des ressources sur le fichier de 931 Mo révèle une inversion des performances cruciale liée à l'architecture des moteurs et aux limites de notre matériel (RAM DDR3 1060 MT/s) :
 
-1. **Polars (Optimisation Vectorielle et Multi-threadée) - 47.96s [RETENU] :**
-   Sur un très grand volume, Polars démontre sa supériorité en exploitant **100% des capacités du CPU**. Grâce à son cœur écrit en Rust et son modèle de données basé sur Apache Arrow, il traite les colonnes par blocs contigus en mémoire. Cela limite drastiquement les allocations dynamiques, maintenant la consommation de RAM à un niveau bas et évitant le bridage par notre mémoire RAM DDR3 lente.
+1. **Rust Axum (Approche Séquentielle Row-by-Row) - 129.95s [RETENU] :**
+   Sur un très grand volume, Rust démontre sa supériorité absolue en s'imposant comme le moteur le plus rapide. Bien que son implémentation actuelle traite le CSV ligne par ligne (ce qui crée un phénomène d'engorgement de la mémoire avec 85% d'occupation RAM et fait tourner le CPU au ralenti à cause du bridage de la mémoire RAM DDR3 lente à 1060 MT/s), l'absence d'overhead et l'efficacité native du langage lui permettent de surclasser la concurrence.
 
-2. **Rust Axum (Approche Séquentielle Row-by-Row) - 134.40s :**
-   Bien que performante sur de petits fichiers, l'implémentation Rust actuelle traite le CSV ligne par ligne. Sur 10,7 millions de lignes, l'allocation et la désallocation répétées de chaînes de caractères créent un phénomène d'engorgement de la mémoire (Memory Churn), faisant grimper l'occupation de la RAM à **85%**. Limité par la vitesse de transfert de la DDR3 (1060 MT/s), le CPU reste en attente, ce qui dégrade fortement le temps de traitement.
+2. **Polars (Optimisation Vectorielle et Multi-threadée) - 478.43s :**
+   Malgré son architecture écrite en Rust, son modèle basé sur Apache Arrow et une exploitation à **100% des capacités du CPU**, Polars s'effondre sur les très grands volumes dans cette configuration. L'allocation par blocs contigus en mémoire et la gestion multi-threadée semblent générer une surcharge massive face aux limites matérielles de la machine locale, le rendant plus de 3,6 fois plus lent que Rust.
 
 ### Conclusion
-Polars surpasse largement Rust (facteur de **2.8x** en faveur de Polars). De plus, conserver Polars en Python apporte un gain substantiel en termes de maintenabilité pour l'équipe DevOps. C'est pourquoi **Polars est sélectionné comme moteur final**.
+Rust surpasse largement Polars (facteur de **3.6x** en faveur de Rust sur le très grand fichier). Malgré l'effort supplémentaire de développement requis par rapport à une solution Python, le gain de performance brut est indiscutable. C'est pourquoi **Rust est sélectionné comme moteur final**.

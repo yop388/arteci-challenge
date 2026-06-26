@@ -1,4 +1,4 @@
-# Résultats du Benchmark Technique (Fichier de 28 Mo)
+# Résultats du Benchmark Technique
 
 *   **Machine de test :** Kali Linux (Environnement Virtuel)
 *   **Moteur PANDAS (Baseline Naïve via `.apply()`) :** 96,11 secondes
@@ -15,6 +15,6 @@ L'implémentation naïve avec Pandas force l'utilisation du Global Interpreter L
 
 | Fichier | Taille | Lignes | Pandas (s) | Polars (s) | Rust (s) | Comportement Matériel Observé |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `lst_of_users_anon_1.csv` | ~28 Mo | 320 399 | 115.12s | 10.19s | 3.75s | Rust plus rapide sur petit volume (pas d'overhead). |
-| `lst_of_users_anon_2.csv` | ~182 Mo | 2 119 517 | *N/A* | 44.15s | 17.51s | Transition de charge. |
-| `lst_of_users_anon_3.csv` | ~931 Mo | 10 799 773 | *N/A* | **47.96s** | **134.40s** | Polars sature le CPU à 100% (gagnant). Rust sature la RAM à 85%. |
+| `lst_of_users_anon_1.csv` | ~28 Mo | 320 399 | 111.25s | 8.80s | 3.47s | Rust plus rapide sur petit volume (pas d'overhead). |
+| `lst_of_users_anon_2.csv` | ~182 Mo | 2 119 517 | *N/A* | 73.45s | 41.33s | Transition de charge. |
+| `lst_of_users_anon_3.csv` | ~931 Mo | 10 799 773 | *N/A* | **478.43s** | **129.95s** | Polars sature le CPU à 100% (mais perdant). Rust sature la RAM à 85%. |
