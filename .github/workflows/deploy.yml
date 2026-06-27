@@ -1,25 +1,31 @@
-name: CI/CD Pipeline
+name: CI/CD Pipeline - Arteci API
 
 on:
   push:
-    branches: [ main ] # Déclenche le pipeline à chaque commit sur main
+    branches: [ main ] # Déclenche le build à chaque git push sur la branche main
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
     steps:
-      - name: Récupérer le code
+      - name: 1. Récupérer le code du dépôt
         uses: actions/checkout@v4
 
-      - name: Connexion à Docker Hub
+      - name: 2. Configurer l'outil de build Docker
+        uses: docker/setup-buildx-action@v3
+
+      - name: 3. Connexion sécurisée à Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Construire et Envoyer l'image
+      - name: 4. Construire l'image et la pousser sur Docker Hub
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: ./Dockerfile
           push: true
           tags: othnielparfait/arteci-api:latest
+          # L'astuce pour utiliser le réseau de l'hôte si besoin pendant le build de l'environnement virtuel
+          network: host 
