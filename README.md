@@ -110,6 +110,25 @@ kubectl logs job/arteci-api-seeder
 ### 4. (Optionnel) Test du benchmark pandas vs polars vs rust
 
 #### Compilation et lancement de l'API RUST en mode performance
+**Installer Cargo si nécessaire**
+*Mettre à jour le système et installer les prérequis*
+```bash
+sudo apt update && sudo apt upgrade -y
+sudo apt install build-essential curl -y
+```
+* *Télécharger et exécuter le script Rustup*
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+* *Configurer les variables d'environnement*
+```bash
+source "$HOME/.cargo/env"
+```
+* *Vérifier que tout est fonctionnel*
+```bash
+cargo --version
+rustc --version
+```
 **Demarrage de l'api RUST (Axum)**
 ```bash
 # aller dans le repertoire rust-parser
