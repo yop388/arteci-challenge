@@ -107,7 +107,7 @@ kubectl logs job/arteci-api-seeder
 ```
 
 
-### 4. (Optionnel) Test du benchmark pandas vs polars vs rust
+### 4. (Optionnel) Test du benchmark Pandas vs Polars vs Rust
 
 #### Compilation et lancement de l'API RUST en mode performance
 **Installer Cargo si nécessaire**
