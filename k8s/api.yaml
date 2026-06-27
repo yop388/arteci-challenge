@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: arteci-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: arteci-api
+  template:
+    metadata:
+      labels:
+        app: arteci-api
+    spec:
+      # --- L'ASTUCE DU REVEIL : Attend que MinIO réponde sur le port 9000 ---
+      initContainers:
+      - name: wait-for-minio
+        image: busybox:latest
+        command: ['sh', '-c', 'until nc -z minio 9000; do echo "En attente de MinIO..."; sleep 2; done;']
+
+      containers:
+      - name: api
+        image: othnielparfait/arteci-api:latest # Récupère l'image de votre Docker Hub
+        ports:
+        - containerPort: 8000
+        env:
+        - name: MINIO_URL
+          value: "http://minio:9000"
+        - name: ACCESS_KEY
+          value: "minioadmin"
+        - name: SECRET_KEY
+          value: "minioadminpassword"
+        - name: PYTHONPATH
+          value: "/app:/app/api"
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://cluster.local" # Adresse K8s standard de SigNoz
+        - name: OTEL_SERVICE_NAME
+          value: "arteci-api"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: arteci-api-service
+spec:
+  type: NodePort # Permet d'ouvrir le port vers l'extérieur de Kubernetes
+  ports:
+    - port: 8000
+      targetPort: 8000
+      nodePort: 30080 # Votre API sera accessible sur le port 30080 de votre cluster
+  selector:
+    app: arteci-api

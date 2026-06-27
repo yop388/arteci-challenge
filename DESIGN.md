@@ -44,34 +44,16 @@ Les grandes familles de formats prises en charge incluent :
 
 *Note métier :* Toute cellule mal formatée ou corrompue ne bloque pas le traitement ; la valeur est renvoyée brute en l'état.
 
+
 ## 3. Contrat d'Interface des Endpoints
 
 ### Endpoint 1 : Récupération des colonnes
-*   **Route :** `GET /columns`
-*   **Description :** Liste toutes les colonnes présentes dans un fichier brut cible stocké sur MinIO.
-*   **Paramètres d'Entrée (Query Params) :**
-    *   `bucket` (string) : Nom du compartiment de stockage.
-    *   `file` (string) : Chemin d'accès complet du fichier.
-*   **Format de Sortie (JSON) :**
-    ```json
-    {
-      "columns": ["id", "username", "created_at", "updated_date", "country"]
-    }
-    ```
+* **Route :** `GET /columns`
+* **Query Params :** `bucket` (string), `file` (string)
 
 ### Endpoint 2 : Normalisation des dates
-*   **Route :** `POST /processDate`
-*   **Description :** Standardise les colonnes sélectionnées "en place" dans MinIO et retourne un aperçu.
-*   **Corps de la Requête (JSON) :**
-    ```json
-    {
-      "bucket": "raw-data-bucket",
-      "file": "path/to/list_of_users_anon_1.csv",
-      "date_columns": ["created_at", "updated_date"],
-      "date_formats": ["DMY", "MDY"]
-    }
-    ```
-*   **Format de Sortie (JSON) :** Liste JSON contenant exactement les 100 premières lignes du fichier entièrement transformé.
+* **Route :** `POST /processDate`
+* **Body (JSON) :** Contient le bucket, le fichier cible, les colonnes à traiter et les formats attendus (`DMY`/`MDY`).
 
 ## 4. Schéma du Flux de Données
 
@@ -79,19 +61,24 @@ Le flux suit une architecture découplée où l'API manipule directement le stoc
 
 ![Schéma du flux de données](docs/Schema_flux_donnees.png)
 
-## Décision d'Architecture - Choix du Langage Final
+## 5. Décision d'Architecture — Choix du Moteur et Arbitrage Technique
 
-À la suite des tests de montée en charge (Stress Tests) sur des volumes critiques allant jusqu'à près de 1 Go (10,7 millions de lignes), le choix architectural final se porte sur **Polars (Python)** pour l'environnement de production.
+À la suite des phases de tests de charge sur un fichier critique de **931 Mo (10,7 millions de lignes)**, un arbitrage architectural majeur a été réalisé entre la performance brute en isolation et l'efficacité opérationnelle globale de la stack. Le choix final s'est porté sur **Polars (Python/FastAPI)** pour l'environnement de production.
 
-### Justification et Analyse Hardware (Passage à l'échelle)
+### Analyse des Performances Brutes (Stress Tests)
 
-L'analyse du comportement des ressources sur le fichier de 931 Mo révèle une inversion des performances cruciale liée à l'architecture des moteurs et aux limites de notre matériel (RAM DDR3 1060 MT/s) :
+1. **Rust Axum (Moteur Bas Niveau)  ~129.95s [Performances Maximales] :**
+   En termes de vitesse pure, l'implémentation native en Rust surpasse largement la concurrence. Malgré une exécution séquentielle qui engendre un fort *Memory Churn* (85% d'occupation RAM) dû aux allocations répétées sur notre architecture matérielle (RAM DDR3 lente), Rust tire pleinement parti de l'absence d'overhead pour valider le fichier en un temps record.
+2. **Polars (Optimisation Vectorielle)  ~478.43s :**
+   Bien que propulsé par un cœur écrit en Rust et basé sur Apache Arrow, le moteur Polars en Python affiche un temps supérieur sur cette volumétrie spécifique. L'allocation par blocs contigus et la parallélisation native provoquent une surcharge de traitement importante sous de fortes contraintes de bande passante mémoire locale, rendant Polars 3,6 fois plus lent que Rust en isolation.
 
-1. **Rust Axum (Approche Séquentielle Row-by-Row) - 129.95s [RETENU] :**
-   Sur un très grand volume, Rust démontre sa supériorité absolue en s'imposant comme le moteur le plus rapide. Bien que son implémentation actuelle traite le CSV ligne par ligne (ce qui crée un phénomène d'engorgement de la mémoire avec 85% d'occupation RAM et fait tourner le CPU au ralenti à cause du bridage de la mémoire RAM DDR3 lente à 1060 MT/s), l'absence d'overhead et l'efficacité native du langage lui permettent de surclasser la concurrence.
+### Justification du Pivot de Production : Pourquoi opter pour Polars ?
 
-2. **Polars (Optimisation Vectorielle et Multi-threadée) - 478.43s :**
-   Malgré son architecture écrite en Rust, son modèle basé sur Apache Arrow et une exploitation à **100% des capacités du CPU**, Polars s'effondre sur les très grands volumes dans cette configuration. L'allocation par blocs contigus en mémoire et la gestion multi-threadée semblent générer une surcharge massive face aux limites matérielles de la machine locale, le rendant plus de 3,6 fois plus lent que Rust.
+Malgré la supériorité chronométrique de Rust, la solution **Polars + FastAPI** a été sélectionnée pour sécuriser le déploiement en production, motivée par des critères DevOps et des contraintes réelles de livraison :
+
+* **Obstacles Critiques d'Observabilité (Le point de blocage) :** L'intégration de la télémétrie OpenTelemetry au sein de l'écosystème asynchrone Rust vers la stack SigNoz (opérée par `foundryctl`) a présenté des frictions majeures. Les conflits de résolution d'alias DNS internes aux réseaux Docker isolés et les instabilités de routage sur les canaux gRPC (`4317`) et HTTP (`4318`) bloquaient la remontée des traces de manière silencieuse.
+* **Maîtrise du Time-to-Market :** Résoudre ces anomalies de communication bas niveau au sein du conteneur Rust demandait un investissement temps disproportionné par rapport au calendrier du challenge.
+* **Compromis Idéal d'Ingénierie :** Polars offre une interface Python de haut niveau extrêmement robuste, combinant une syntaxe agile, une intégration réseau nativement stable avec les solutions d'observabilité standard, et des performances qui restent largement industrielles (le fichier de 931 Mo est traité de bout en bout sans crash ni timeout).
 
 ### Conclusion
-Rust surpasse largement Polars (facteur de **3.6x** en faveur de Rust sur le très grand fichier). Malgré l'effort supplémentaire de développement requis par rapport à une solution Python, le gain de performance brut est indiscutable. C'est pourquoi **Rust est sélectionné comme moteur final**.
+La bascule vers **FastAPI + Polars** incarne une décision d'ingénierie pragmatique : privilégier une stack stable, immédiatement observable, documentée et intégrable, plutôt qu'une performance brute isolée mais aveugle au sein du système.
