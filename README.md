@@ -1,4 +1,4 @@
-# ARTECI — API Haute Performance de Normalisation de Dates
+# ARTECI - API Haute Performance de Normalisation de Dates
 
 Ce projet s'inscrit dans le cadre du Challenge DevOps / Data Platform d'Artefact. Il implémente une API robuste, scalable et cloud-native capable de traiter à haute performance des fichiers de données mixtes comportant des ambiguïtés de formats de date (ex: DMY vs MDY).
 
@@ -28,8 +28,9 @@ Dans le cadre de notre démarche d'ingénierie, les performances des moteurs Pan
 **Environnement de test :** Machine locale (12 Go RAM DDR3 1060 MT/s, CPU multi-cœurs).
 **Méthodologie :** Mesure complète de l'appel HTTP (Téléchargement MinIO -> Parsing -> Écriture MinIO).
 
-* **Petit volume (28 Mo – 320 399 lignes) :** Rust (~3.47s) < Polars (~8.80s) < Pandas (~111.25s)
-* **Gros volume (931 Mo – 10 799 773 lignes) :** Rust (~129.95s) < Polars (~478.43s) < Pandas (Timeout / Échec)
+* **volume (28 Mo : 320 399 lignes) :** Rust (~3.47s) < Polars (~8.80s) < Pandas (~111.25s)
+* **volume (182 Mo : 2 119 517 ) :** Rust (~41.33s) < Polars (~73.45s) < Pandas (*N/A*)
+* **volume (931 Mo : 10 799 773 lignes) :** Rust (~129.95s) < Polars (~478.43s) < Pandas (*N/A*)
 
 ### Décision Finale : Choix de FastAPI + Polars (Python)
 Bien que le prototype bas niveau en Rust ait prouvé sa supériorité brute sur le plan chronométrique (3.6x plus rapide que Polars sur 1 Go de données), l'architecture Polars en Python a été retenue pour la production. Ce choix repose sur un arbitrage pragmatique entre performance pure et contraintes opérationnelles :
@@ -44,10 +45,17 @@ Bien que le prototype bas niveau en Rust ait prouvé sa supériorité brute sur 
 
 L'environnement de développement local fait communiquer l'API, le stockage MinIO et la pile d'observabilité SigNoz à travers un réseau Docker partagé (`signoz-network`).
 
-### 1. Résolution des problèmes de Timeout de compilation
-Si le moteur Docker rencontre des coupures de flux DNS (`Temporary failure resolving 'deb.debian.org'`) lors de la fabrication de l'image de l'API en local, forcez l'utilisation du réseau de votre machine hôte :
+### 1. execution de signoz via foundry
+
+####  Installation de foundryctl
+
 ```bash
-docker build --network=host -t othnielparfait/arteci-api:latest .
+curl -fsSL https://signoz.io/foundry.sh | bash
+```
+
+#### Deploiement
+```bash
+foundryctl cast -f casting.yaml
 ```
 
 ### 2. Lancement des conteneurs applicatifs
@@ -56,17 +64,25 @@ Pour démarrer simultanément l'API et le stockage MinIO :
 docker compose up -d
 ```
 
-### 3. Gestion de la Stack SigNoz (Foundry)
-L'installation de SigNoz est orchestrée par l'utilitaire `foundryctl`. En cas de plantage des scripts d'initialisation utilisateur, forcez manuellement le réveil de la base de données principale ClickHouse et des scripts associés via l'API Docker :
+#### test avec les interfaces graphique:
+
+|**Signoz**|**FastAPI**| **MinIO** | 
+| :--: | :--: | :--: |
+| http://adresse_ip:8080 | http://adresse_ip:8000 | http://adresse_ip:9001 | 
+
+
+
+### 3. Installation step by step en cas d'erreur avec script foundryctl automatisé (Foundry)
+L'installation de SigNoz est orchestrée par l'utilitaire `foundryctl`. En cas de plantage des scripts d'initialisation utilisateur et/ou Timeout après plus de 5 minutes, utiliser l'installation step by step :
 ```bash
-# Vérifier la santé des conteneurs
-docker ps -a
+# Validate prerequisites
+foundryctl gauge -f casting.yaml
 
-# Forcer le démarrage de ClickHouse
-docker start signoz-telemetrystore-clickhouse-0-0
+# Generate compose files
+foundryctl forge -f casting.yaml
 
-# Rejouer le script de configuration des tables utilisateurs
-docker start signoz-telemetrystore-clickhouse-user-scripts
+# Start the stack
+cd pours/deployment && docker compose up -d
 ```
 ## 💾 Initialisation des Données & Création des Buckets (Seeding)
 
@@ -123,12 +139,31 @@ L'infrastructure Kubernetes sépare l'application en modules isolés communicant
 En production, SigNoz s'installe via son gestionnaire de paquets officiel Helm dans son propre espace sécurisé :
 ```bash
 # 1. Ajouter le dépôt de logiciels officiel de SigNoz
-helm repo add signoz https://signoz.io
+helm repo add signoz https://charts.signoz.io
 
-# 2. Créer un espace isolé nommé 'signoz'
+# Mettre à jour vos dépôts Helm locaux pour récupérer la liste des versions
+helm repo update
+
+# 2. Installer MicroK8s
+sudo snap install microk8s --classic
+
+# 3. Ajouter votre utilisateur au groupe microk8s pour éviter d'utiliser 'sudo' à chaque fois
+sudo usermod -a -G microk8s $USER
+mkdir -p ~/.kube
+chmod 0700 ~/.kube
+
+# /!\ IMPORTANT : Déconnectez-vous et reconnectez-vous à votre session EC2 ici pour appliquer les groupes
+
+# 4. Générer le fichier de configuration pour que 'kubectl' s'y connecte
+microk8s config > ~/.kube/config
+
+# 5. Activer le support DNS (indispensable pour SigNoz)
+microk8s enable dns
+
+# 6. Créer l'espace isolé (namespace) nommé 'signoz'
 kubectl create namespace signoz
 
-# 3. Installer toute l'infrastructure complète SigNoz d'un seul coup
+# 7. Installer toute l'infrastructure complète SigNoz
 helm install my-release signoz/signoz -n signoz
 ```
 
