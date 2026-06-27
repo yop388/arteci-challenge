@@ -140,7 +140,7 @@ cargo run --release
 ```
 **execution du script de benchmark** *s'assurer que pandas/polars(FastAPI) sont en cours d'exécution*
 ```bash
-python benchmarks/bench_pandas_polars_rust.py
+python benchmarks/bench_pandas_polars_rust.py nom_fichier.csv
 ```
 
 

@@ -8,8 +8,11 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::io::Cursor;
-use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime};
 use aws_sdk_s3::{Client, config::{Credentials, Region}};
+
+// Importation du trait nécessaire pour configurer le endpoint OTLP gRPC
+use opentelemetry_otlp::WithExportConfig;
 
 // ---------------------------------------------------------------------------
 // STRUCTURES DE DONNÉES
@@ -28,6 +31,9 @@ struct ProcessResponse {
     status: String,
     engine_used: String,
     message: String,
+    // Ajout du champ pour retourner l'aperçu des données sous forme de tableau d'objets JSON
+    #[serde(skip_serializing_if = "Option::is_none")]
+    preview: Option<serde_json::Value>,
 }
 
 // ---------------------------------------------------------------------------
@@ -64,31 +70,24 @@ fn try_parse_unix(raw: &str) -> Option<NaiveDateTime> {
 
 /// Priorités 2, 3, 4, 5 : Formats ISO et dérivés non ambigus
 fn try_parse_iso(raw: &str) -> Option<NaiveDateTime> {
-    // Priorité 2a : ISO 8601 avec timezone 'Z'  → remplacé par +00:00
     let cleaned = raw.replace('Z', "+00:00");
 
-    // Priorité 2b : avec millisecondes + timezone  ex: 2024-03-22T14:30:00.123+00:00
     if let Ok(dt) = DateTime::parse_from_str(&cleaned, "%Y-%m-%dT%H:%M:%S%.f%z") {
         return Some(dt.naive_utc());
     }
-    // Priorité 2c : sans millisecondes + timezone  ex: 2024-03-22T14:30:00+00:00
     if let Ok(dt) = DateTime::parse_from_str(&cleaned, "%Y-%m-%dT%H:%M:%S%z") {
         return Some(dt.naive_utc());
     }
-    // Priorité 2d : ISO sans timezone  ex: 2024-03-22T14:30:00
     if let Ok(dt) = NaiveDateTime::parse_from_str(raw, "%Y-%m-%dT%H:%M:%S") {
         return Some(dt);
     }
 
-    // Priorité 3 : yyyy-MM-dd HH:mm:ss
     if let Ok(dt) = NaiveDateTime::parse_from_str(raw, "%Y-%m-%d %H:%M:%S") {
         return Some(dt);
     }
-    // Priorité 4 : yyyy-MM-dd
     if let Ok(d) = NaiveDate::parse_from_str(raw, "%Y-%m-%d") {
         return Some(d.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap()));
     }
-    // Priorité 5 : yyyyMMdd (ISO compact)
     if let Ok(d) = NaiveDate::parse_from_str(raw, "%Y%m%d") {
         return Some(d.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap()));
     }
@@ -100,19 +99,16 @@ fn try_parse_iso(raw: &str) -> Option<NaiveDateTime> {
 fn try_parse_textual_month(raw: &str) -> Option<NaiveDateTime> {
     let lower = raw.to_lowercase();
 
-    // Extraction générique des nombres présents dans la chaîne
     let nums: Vec<u32> = raw
         .split(|c: char| !c.is_ascii_digit())
         .filter(|s| !s.is_empty())
         .filter_map(|s| s.parse().ok())
         .collect();
 
-    // Extraction de l'heure si présente sous la forme HH:MM:SS
     let time_parts: Vec<u32> = {
         let mut found = Vec::new();
         let parts: Vec<&str> = raw.split(':').collect();
         if parts.len() >= 3 {
-            // On cherche trois groupes numériques consécutifs séparés par ':'
             for i in 0..parts.len().saturating_sub(2) {
                 let h_raw: Vec<&str> = parts[i].split_whitespace().collect();
                 let m_raw = parts[i + 1];
@@ -136,7 +132,6 @@ fn try_parse_textual_month(raw: &str) -> Option<NaiveDateTime> {
         (0, 0, 0)
     };
 
-    // Test mois français
     for (i, &mois) in MOIS_FR.iter().enumerate() {
         if lower.contains(mois) && nums.len() >= 2 {
             let jour = nums[0];
@@ -150,7 +145,6 @@ fn try_parse_textual_month(raw: &str) -> Option<NaiveDateTime> {
         }
     }
 
-    // Test mois anglais abrégés
     for (i, &mois) in MOIS_EN_ABBR.iter().enumerate() {
         if lower.contains(mois) && nums.len() >= 2 {
             let jour = nums[0];
@@ -169,10 +163,8 @@ fn try_parse_textual_month(raw: &str) -> Option<NaiveDateTime> {
 
 /// Priorités 7 & 8 : Formats ambigus (/ - .) avec règles d'ambiguïté + extraction d'heure
 fn try_parse_ambiguous(raw: &str, hint: &str) -> Option<NaiveDateTime> {
-    // Normalisation : on remplace tous les séparateurs de date par '/'
     let normalized = raw.replace('-', "/").replace('.', "/");
 
-    // Extraction de tous les blocs numériques
     let parts: Vec<u32> = normalized
         .split(|c: char| !c.is_ascii_digit())
         .filter(|s| !s.is_empty())
@@ -185,28 +177,23 @@ fn try_parse_ambiguous(raw: &str, hint: &str) -> Option<NaiveDateTime> {
 
     let (p1, p2, p3) = (parts[0], parts[1], parts[2]);
 
-    // Extraction de l'heure si présente (Priorité 8 : blocs 3, 4, 5)
     let (h, m, s) = if parts.len() >= 6 {
         (parts[3], parts[4], parts[5])
     } else {
         (0, 0, 0)
     };
 
-    // Construction de la date selon les règles d'ambiguïté
     let (year, month, day) = {
-        // RÈGLE 1 : p1 > 12 → jour certain → format DMY
         if p1 > 12 && p2 <= 12 {
             (p3 as i32, p2, p1)
         }
-        // RÈGLE 2 : p2 > 12 → mois certain → format MDY
         else if p2 > 12 && p1 <= 12 {
             (p3 as i32, p1, p2)
         }
-        // RÈGLE 3 : ambiguïté totale → application stricte du hint
         else if hint == "DMY" {
-            (p3 as i32, p2, p1) // JJ/MM/AAAA
+            (p3 as i32, p2, p1)
         } else {
-            (p3 as i32, p1, p2) // MM/JJ/AAAA
+            (p3 as i32, p1, p2)
         }
     };
 
@@ -219,32 +206,26 @@ fn try_parse_ambiguous(raw: &str, hint: &str) -> Option<NaiveDateTime> {
 pub fn parse_date_cell(value: &str, hint: &str) -> String {
     let raw = value.trim();
 
-    // Cellule vide / nulle
     if raw.is_empty() || matches!(raw.to_lowercase().as_str(), "nan" | "null" | "none") {
         return String::new();
     }
 
-    // Priorité 1 : Timestamp Unix
     if let Some(dt) = try_parse_unix(raw) {
         return dt.format(OUTPUT_FORMAT).to_string();
     }
 
-    // Priorités 2, 3, 4, 5 : Formats ISO
     if let Some(dt) = try_parse_iso(raw) {
         return dt.format(OUTPUT_FORMAT).to_string();
     }
 
-    // Priorité 6 : Mois textuels FR / EN
     if let Some(dt) = try_parse_textual_month(raw) {
         return dt.format(OUTPUT_FORMAT).to_string();
     }
 
-    // Priorités 7 & 8 : Formats ambigus + heure
     if let Some(dt) = try_parse_ambiguous(raw, hint) {
         return dt.format(OUTPUT_FORMAT).to_string();
     }
 
-    // Cellule non parsable : retour de la valeur d'origine inchangée
     value.to_string()
 }
 
@@ -261,10 +242,14 @@ async fn get_minio_client() -> Client {
         "manual",
     );
 
+    // On cherche si une URL spécifique est fournie par Docker, sinon on met l'adresse du réseau Docker
+    let minio_endpoint = std::env::var("MINIO_ENDPOINT_URL")
+        .unwrap_or_else(|_| "http://minio:9000".to_string()); // "minio" à la place de "localhost"
+
     let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
         .credentials_provider(credentials)
         .region(Region::new("us-east-1"))
-        .endpoint_url("http://localhost:9000")
+        .endpoint_url(minio_endpoint)
         .load()
         .await;
 
@@ -279,10 +264,12 @@ async fn get_minio_client() -> Client {
 // HANDLER HTTP
 // ---------------------------------------------------------------------------
 
+use tracing::instrument;
+
+#[instrument(name = "process_date_handler", skip(payload))]
 async fn process_date_handler(
     Json(payload): Json<ProcessDateRequest>,
 ) -> impl IntoResponse {
-    // Validation : listes de même taille
     if payload.date_columns.len() != payload.date_formats.len() {
         return (
             StatusCode::BAD_REQUEST,
@@ -290,13 +277,13 @@ async fn process_date_handler(
                 status: "error".to_string(),
                 engine_used: "rust".to_string(),
                 message: "Les listes 'date_columns' et 'date_formats' doivent avoir la même taille.".to_string(),
+                preview: None,
             }),
         );
     }
 
     let s3_client = get_minio_client().await;
 
-    // 1. Récupération du fichier source depuis MinIO
     let s3_object = match s3_client
         .get_object()
         .bucket(&payload.bucket)
@@ -312,6 +299,7 @@ async fn process_date_handler(
                     status: "error".to_string(),
                     engine_used: "rust".to_string(),
                     message: format!("Fichier ou Bucket introuvable : {}", err),
+                    preview: None,
                 }),
             );
         }
@@ -326,12 +314,12 @@ async fn process_date_handler(
                     status: "error".to_string(),
                     engine_used: "rust".to_string(),
                     message: format!("Erreur lors de la lecture du flux S3 : {}", err),
+                    preview: None,
                 }),
             );
         }
     };
 
-    // 2. Lecture du CSV (séparateur ';')
     let mut reader = csv::ReaderBuilder::new()
         .delimiter(b';')
         .from_reader(Cursor::new(data_bytes));
@@ -345,12 +333,12 @@ async fn process_date_handler(
                     status: "error".to_string(),
                     engine_used: "rust".to_string(),
                     message: "Impossible de lire les en-têtes du CSV.".to_string(),
+                    preview: None,
                 }),
             );
         }
     };
 
-    // Résolution des index des colonnes à traiter
     let mut target_indices: Vec<(usize, &str)> = Vec::new();
     for (col, fmt) in payload.date_columns.iter().zip(payload.date_formats.iter()) {
         match headers.iter().position(|h| h == col) {
@@ -362,13 +350,13 @@ async fn process_date_handler(
                         status: "error".to_string(),
                         engine_used: "rust".to_string(),
                         message: format!("Colonne '{}' absente du fichier CSV.", col),
+                        preview: None,
                     }),
                 );
             }
         }
     }
 
-    // 3. Traitement ligne par ligne avec écriture dans le CSV de sortie
     let mut writer = csv::WriterBuilder::new()
         .delimiter(b';')
         .from_writer(vec![]);
@@ -377,20 +365,20 @@ async fn process_date_handler(
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(ProcessResponse {
             status: "error".into(), engine_used: "rust".into(),
             message: "Erreur d'écriture des en-têtes.".into(),
+            preview: None,
         }));
     }
 
     for result in reader.records() {
         let record = match result {
             Ok(r) => r,
-            Err(_) => continue, // Ligne corrompue : ignorée sans bloquer le traitement
+            Err(_) => continue,
         };
 
         let new_record: Vec<String> = record
             .iter()
             .enumerate()
             .map(|(idx, field)| {
-                // Si la colonne courante est une colonne de date à traiter
                 if let Some(&(_, hint)) = target_indices.iter().find(|(i, _)| *i == idx) {
                     parse_date_cell(field, hint)
                 } else {
@@ -403,20 +391,27 @@ async fn process_date_handler(
             return (StatusCode::INTERNAL_SERVER_ERROR, Json(ProcessResponse {
                 status: "error".into(), engine_used: "rust".into(),
                 message: "Erreur d'écriture d'une ligne.".into(),
+                preview: None,
             }));
         }
     }
 
-    let final_csv_bytes = match writer.into_inner() {
+    // 1. Finalisation du tampon CSV (Fin de ta boucle d'écriture)
+    let final_csv_bytes: Vec<u8> = match writer.into_inner() {
         Ok(bytes) => bytes,
-        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(ProcessResponse {
-            status: "error".into(), engine_used: "rust".into(),
-            message: "Erreur de finalisation du tampon CSV.".into(),
-        })),
+        Err(_) => return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ProcessResponse {
+                status: "error".to_string(),
+                engine_used: "rust".to_string(),
+                message: "Erreur de finalisation du tampon CSV.".to_string(),
+                preview: None, // Initialisation obligatoire du nouveau champ
+            }),
+        ),
     };
 
-    // 4. Sauvegarde dans le bucket "processeddata"
-    let body_stream = aws_sdk_s3::primitives::ByteStream::from(final_csv_bytes);
+    // 2. Envoi du fichier traité dans le bucket 'processeddata'
+    let body_stream = aws_sdk_s3::primitives::ByteStream::from(final_csv_bytes.clone());
     if let Err(err) = s3_client
         .put_object()
         .bucket("processeddata")
@@ -431,10 +426,31 @@ async fn process_date_handler(
                 status: "error".to_string(),
                 engine_used: "rust".to_string(),
                 message: format!("Erreur d'écriture dans MinIO : {}", err),
+                preview: None, // Initialisation obligatoire du nouveau champ
             }),
         );
     }
 
+    // 3. Extraction des 100 premières lignes pour le retour JSON
+    // Utilisation explicite de std::io::Cursor pour éviter tout problème d'import manquants
+    let mut preview_reader = csv::ReaderBuilder::new()
+        .delimiter(b';')
+        .from_reader(std::io::Cursor::new(final_csv_bytes));
+
+    let preview_headers = preview_reader.headers().unwrap().clone();
+    let mut preview_rows = Vec::new();
+
+    for result in preview_reader.records().take(100) {
+        if let Ok(record) = result {
+            let mut row_map = serde_json::Map::new();
+            for (header, field) in preview_headers.iter().zip(record.iter()) {
+                row_map.insert(header.to_string(), serde_json::Value::String(field.to_string()));
+            }
+            preview_rows.push(serde_json::Value::Object(row_map));
+        }
+    }
+
+    // 4. Réponse HTTP 200 de succès avec l'aperçu complet des données
     (
         StatusCode::OK,
         Json(ProcessResponse {
@@ -445,23 +461,70 @@ async fn process_date_handler(
                 payload.date_columns.len(),
                 payload.file
             ),
+            preview: Some(serde_json::Value::Array(preview_rows)),
         }),
     )
 }
 
 // ---------------------------------------------------------------------------
-// POINT D'ENTRÉE
+// INITIALISATION DE TÉLÉMÉTRIE (SIGNOZ OTLP gRPC - Version Robuste)
+// ---------------------------------------------------------------------------
+
+fn init_telemetry() -> opentelemetry_sdk::trace::Tracer {
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+
+    // Récupération de l'endpoint fourni par Docker Compose
+    let otlp_endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
+        .unwrap_or_else(|_| "http://signoz-ingester-1:4317".to_string());
+
+    // Configuration de l'exportateur gRPC pour OpenTelemetry
+    let exporter = opentelemetry_otlp::new_exporter()
+        .tonic()
+        .with_endpoint(otlp_endpoint);
+
+    // Initialisation du pipeline de traces
+    let tracer = opentelemetry_otlp::new_pipeline()
+        .tracing()
+        .with_exporter(exporter)
+        .with_trace_config(
+            opentelemetry_sdk::trace::config().with_resource(
+                opentelemetry_sdk::Resource::new(vec![opentelemetry::KeyValue::new(
+                    "service.name",
+                    "arteci-api-rust", // C'est ce nom que tu chercheras dans SigNoz
+                )]),
+            ),
+        )
+        .install_batch(opentelemetry_sdk::runtime::Tokio)
+        .expect("Impossible d'initialiser le pipeline OpenTelemetry");
+
+    // Création de la couche de télémétrie pour le framework Tracing
+    let telemetry_layer = tracing_opentelemetry::layer().with_tracer(tracer.clone());
+    
+    // Initialisation sécurisée du registre global (on ignore si déjà initialisé)
+    let _ = tracing_subscriber::registry()
+        .with(tracing_subscriber::EnvFilter::from_default_env())
+        .with(tracing_subscriber::fmt::layer())
+        .with(telemetry_layer)
+        .try_init();
+
+    tracer
+}
+
+// ---------------------------------------------------------------------------
+// POINT D'ENTRÉE — ÉCOUTE SUR 0.0.0.0
 // ---------------------------------------------------------------------------
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
+    let _tracer = init_telemetry();
 
-    let app = Router::new().route("/processDate", post(process_date_handler));
+    let app = Router::new()
+        .route("/processDate", post(process_date_handler))
+        .layer(tower_http::trace::TraceLayer::new_for_http());
 
-    // Port 8001 pour coexister avec FastAPI (port 8000)
-    let addr = SocketAddr::from(([127, 0, 0, 1], 8001));
-    tracing::info!("Serveur Rust API démarré sur http://{}", addr);
+    let addr = SocketAddr::from(([0, 0, 0, 0], 8001));
+    tracing::info!("Serveur Rust API démarré sur {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
