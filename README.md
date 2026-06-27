@@ -84,17 +84,17 @@ foundryctl forge -f casting.yaml
 # Start the stack
 cd pours/deployment && docker compose up -d
 ```
-## 💾 Initialisation des Données & Création des Buckets (Seeding)
+### 💾 Initialisation des Données & Création des Buckets (Seeding)
 
 Le projet utilise le script `api/src/seed_data.py` (dont il faudra adapter le *CSV_FILE_PATH = "chemin/fichier.csv*") pour vérifier l'existence des compartiments de stockage nécessaires (`raw` et `processeddata`), les créer si besoin, et y téléverser un fichier CSV initial pour les tests.
 
-### 1. En Développement Local
+###  En Développement Local
 Exécutez simplement le script depuis votre machine hôte après avoir démarré vos conteneurs. Les connexions basculeront automatiquement sur `localhost` :
 ```bash
 python api/src/seed_data.py
 ```
 
-### 2. En Production sur Kubernetes
+### En Production sur Kubernetes
 Le déploiement intègre un **Job Kubernetes** autonome qui s'exécute directement à l'intérieur du cluster et communique avec MinIO via les adresses réseaux isolées.
 
 Pour provisionner les buckets et injecter les fichiers de tests en production :
@@ -105,6 +105,25 @@ Vous pouvez suivre l'avancement du téléversement dans les logs du cluster avec
 ```bash
 kubectl logs job/arteci-api-seeder
 ```
+
+
+### 4. (Optionnel) Test du benchmark pandas vs polars vs rust
+
+#### Compilation et lancement de l'API RUST en mode performance
+**Demarrage de l'api RUST (Axum)**
+```bash
+# aller dans le repertoire rust-parser
+cd rust-parser
+
+cargo build --release
+
+cargo run --release
+```
+**execution du script de benchmark** *s'assurer que pandas/polars(FastAPI) sont en cours d'exécution*
+```bash
+python benchmarks/bench_pandas_polars_rust.py
+```
+
 
 
 ### 4. Utilisation de l'API & Tracing
