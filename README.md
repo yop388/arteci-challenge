@@ -68,7 +68,7 @@ docker compose up -d
 
 |**Signoz**|**FastAPI**| **MinIO** | 
 | :--: | :--: | :--: |
-| http://adresse_ip:8080 | http://adresse_ip:8000/docs/ | http://adresse_ip:9001 `login: minioadmin & password: minioadminpassword` | 
+| http://adresse_ip:8080 | http://adresse_ip:8000/docs | http://adresse_ip:9001 `login: minioadmin & password: minioadminpassword` | 
 
 
 
@@ -335,6 +335,6 @@ minio   NodePort   10.152.183.31   <none>        9000:30163/TCP,9001:31271/TCP  
 ```
 |**Tableau de bord de supervision (SigNoz)**|**API (arteci-api-service)**|**Tableau de bord de MinIO**|
 | :--- |:--- |:--- |
-|URL d'accès : **`http://adresse_ip:30528`**|URL d'accès : **`http://adresse_ip:30080`**|URL d'accès : **`http://adresse_ip:31271`**|
+|URL d'accès : **`http://adresse_ip:30528`**|URL d'accès : **`http://adresse_ip:30080/docs`**|URL d'accès : **`http://adresse_ip:31271`** Access Key (User) : **`minioadmin`** & Secret Key (Password) : **`minioadminpassword`**|
 
-* **`NB: pour acceder depuis internet, s'assurer de la configuration du Security Group AWS de de instance EC2 et ajoutez une règle entrante (Custom TCP) pour autoriser le ports externes`**
+* **`NB: pour acceder depuis internet, s'assurer de la configuration du Security Group AWS de l'instance EC2 et ajoutez une règle entrante (Custom TCP) pour autoriser le ports externes`**

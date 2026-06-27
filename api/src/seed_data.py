@@ -22,7 +22,7 @@ def ensure_buckets_exist(s3_client):
 
 
 # Chemin du fichier CSV
-CSV_FILE_PATH = "docs/lst_of_users_anon_1.csv"
+CSV_FILE_PATH = "docs/lst_of_users_anon_3.csv"
 
 def upload_to_minio():
     # 1. Initialisation du client compatible S3

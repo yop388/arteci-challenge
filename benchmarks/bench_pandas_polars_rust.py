@@ -6,7 +6,7 @@ if __name__ == "__main__":
     # Vérifie si l'utilisateur a bien donné un nom de fichier en argument
     if len(sys.argv) < 2:
         print("Erreur : Veuillez donner le nom du fichier CSV en paramètre.")
-        print("Exemple : python script.py mon_fichier.csv")
+        print("Exemple : python script.py lst_of_users_anon_1.csv")
         sys.exit(1)
 
     # Récupère le nom du fichier depuis la ligne de commande
