@@ -68,7 +68,7 @@ docker compose up -d
 
 |**Signoz**|**FastAPI**| **MinIO** | 
 | :--: | :--: | :--: |
-| http://adresse_ip:8080 | http://adresse_ip:8000/docs/ `login: minioadmin & password: minioadminpassword` | http://adresse_ip:9001 | 
+| http://adresse_ip:8080 | http://adresse_ip:8000/docs/ | http://adresse_ip:9001 `login: minioadmin & password: minioadminpassword` | 
 
 
 
