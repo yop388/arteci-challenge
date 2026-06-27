@@ -274,7 +274,7 @@ kubectl patch svc my-release-signoz -n signoz -p '{"spec": {"type": "NodePort"}}
 kubectl get svc my-release-signoz -n signoz
 ```
 
-### (Optionnel) quelques commandes de verification important
+### (Optionnel) quelques commandes de vérification importantes
 * **`1. Vérifier l'état de l'instance (Le Nœud)`**
 ```bash
 # Lister le nœud et vérifier que le statut est "Ready"
