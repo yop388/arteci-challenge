@@ -33,7 +33,7 @@ spec:
         - name: PYTHONPATH
           value: "/app:/app/api"
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: "http://cluster.local" # Adresse K8s standard de SigNoz
+          value: "http://my-release-signoz-otel-collector.signoz.svc.cluster.local:4317"
         - name: OTEL_SERVICE_NAME
           value: "arteci-api"
 ---
