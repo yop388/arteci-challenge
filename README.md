@@ -171,7 +171,7 @@ curl -X POST "http://localhost:8000/processDate" \
 
 ---
 
-## ☸️ Déploiement Kubernetes (K8s)
+## ☸️ Déploiement Kubernetes (K8s) `Nous utilisons au choix un AWS EC2 m7i-flex.large pour les tests de deployement `
 
 L'infrastructure Kubernetes sépare l'application en modules isolés communicant via le réseau global du cluster (Cross-Namespace DNS). Les manifestes se trouvent dans le dossier `k8s/`.
 
@@ -231,37 +231,75 @@ sudo apt-get install -y helm
 helm version
 ```
 
-### 2. Déploiement de SigNoz via Helm
-
+### 2. Déploiement de SigNoz via Helm 
+* **Partie 1 : Installation et Configuration du Cluster (MicroK8s)**
 ```bash
-# 1. Ajouter le dépôt de logiciels officiel de SigNoz
-helm repo add signoz https://charts.signoz.io
-
-# Mettre à jour vos dépôts Helm locaux pour récupérer la liste des versions
-helm repo update
-
-# 2. Installer MicroK8s
+# 1. Installer MicroK8s sur l'instance EC2
 sudo snap install microk8s --classic
 
-# 3. Ajouter l'utilisateur au groupe microk8s pour éviter d'utiliser 'sudo' à chaque fois
+# 2. Configurer les permissions utilisateur (évite d'utiliser 'sudo' devant kubectl/microk8s)
 sudo usermod -a -G microk8s $USER
 mkdir -p ~/.kube
 chmod 0700 ~/.kube
 
-# /!\ IMPORTANT : Déconnectez-vous et reconnectez-vous à votre session EC2 ici pour appliquer les groupes
-
-# 4. Générer le fichier de configuration pour que 'kubectl' s'y connecte
+# 3. Générer le fichier de configuration pour que 'kubectl' local s'y connecte
 microk8s config > ~/.kube/config
 
-# 5. Activer le support DNS (indispensable pour SigNoz)
-microk8s enable dns
+# /!\ IMPORTANT : Se déconnecter et  se reconnecter à la session SSH EC2 ici pour que l'ajout au groupe microk8s soit pris en compte.
 
-# 6. Créer l'espace isolé (namespace) nommé 'signoz'
+# 4. Activer les addons indispensables (DNS et Stockage Persistant)
+microk8s enable dns
+microk8s enable hostpath-storage
+```
+* **Partie 2 : Déploiement de SigNoz**
+```bash
+# 5. Ajouter le dépôt de logiciels officiel de SigNoz (URL Corrigée)
+helm repo add signoz https://charts.signoz.io
+
+# 6. Mettre à jour les dépôts Helm locaux
+helm repo update
+
+# 7. Créer l'espace isolé (namespace) nommé 'signoz'
 kubectl create namespace signoz
 
-# 7. Installer toute l'infrastructure complète SigNoz
+# 8. Installer toute l'infrastructure complète SigNoz
 helm install my-release signoz/signoz -n signoz
 ```
+* **Partie 3 : Exposition sur Internet (Accès Web)**
+```bash
+# 9. Modifier le service pour l'exposer via un NodePort fixe
+kubectl patch svc my-release-signoz -n signoz -p '{"spec": {"type": "NodePort"}}'
+
+# 10. Récupérer le port externe attribué à l'interface web (ex: 8080:30528/TCP)
+kubectl get svc my-release-signoz -n signoz
+```
+
+### (Optionnel) quelques commandes de verification important
+* **`1. Vérifier l'état de l'instance (Le Nœud)`**
+```bash
+# Lister le nœud et vérifier que le statut est "Ready"
+kubectl get nodes
+```
+* **`2. Vérifier l'état des Pods SigNoz`**
+```bash
+# Voir tous les pods dans le namespace 'signoz'
+kubectl get pods -n signoz
+
+# Voir les pods avec plus de détails (comme l'adresse IP interne ou le nœud)
+kubectl get pods -n signoz -o wide
+
+# Suivre en temps réel les changements de statut (pratique lors d'un déploiement)
+kubectl get pods -n signoz --watch
+```
+* **`3. En cas de problème (Le diagnostic de base)`**
+```bash
+# 1. Voir l'historique des événements d'un pod (pour comprendre POURQUOI il bloque)
+kubectl describe pod <nom-du-pod> -n signoz
+
+# 2. Voir les logs/journaux système du conteneur (pour voir l'erreur de l'application)
+kubectl logs <nom-du-pod> -n signoz
+```
+
 
 ### 2. Déploiement de l'API et de MinIO
 Pour déployer vos fichiers de configuration, appliquez les manifestes. L'API intègre un `initContainer` de sécurité qui met l'application en pause tant que le serveur de stockage MinIO n'est pas prêt sur le port 9000 :
