@@ -86,7 +86,7 @@ cd pours/deployment && docker compose up -d
 ```
 ## 💾 Initialisation des Données & Création des Buckets (Seeding)
 
-Le projet utilise le script `api/src/seed_data.py` pour vérifier l'existence des compartiments de stockage nécessaires (`raw` et `processeddata`), les créer si besoin, et y téléverser un fichier CSV initial pour les tests.
+Le projet utilise le script `api/src/seed_data.py` (dont il faudra adapter le *CSV_FILE_PATH = "chemin/fichier.csv*") pour vérifier l'existence des compartiments de stockage nécessaires (`raw` et `processeddata`), les créer si besoin, et y téléverser un fichier CSV initial pour les tests.
 
 ### 1. En Développement Local
 Exécutez simplement le script depuis votre machine hôte après avoir démarré vos conteneurs. Les connexions basculeront automatiquement sur `localhost` :

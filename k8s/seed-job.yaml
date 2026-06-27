@@ -7,7 +7,7 @@ spec:
     spec:
       containers:
       - name: seeder
-        image: othnielparfait/arteci-api:latest # Utilise votre image Docker Hub
+        image: othnielparfait/arteci-api:latest # Utilise notre image Docker Hub
         command: ["python", "api/src/seed_data.py"]
         env:
         - name: MINIO_URL
