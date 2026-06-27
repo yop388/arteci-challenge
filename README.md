@@ -23,7 +23,7 @@ Le projet intègre un pipeline d'Intégration Continue (`.github/workflows/deplo
 
 Dans le cadre de notre démarche d'ingénierie, les performances des moteurs Pandas, Polars (Python) et Rust ont été rigoureusement mesurées sur des volumétries industrielles.
 
-### Synthèse des Résultats (Médiane sur 3 lancers)
+### Synthèse des Résultats de test en Local
 
 **Environnement de test :** Machine locale (12 Go RAM DDR3 1060 MT/s, CPU multi-cœurs).
 **Méthodologie :** Mesure complète de l'appel HTTP (Téléchargement MinIO -> Parsing -> Écriture MinIO).
@@ -68,7 +68,7 @@ docker compose up -d
 
 |**Signoz**|**FastAPI**| **MinIO** | 
 | :--: | :--: | :--: |
-| http://adresse_ip:8080 | http://adresse_ip:8000 *login: minioadmin & password: minioadminpassword* | http://adresse_ip:9001 | 
+| http://adresse_ip:8080 | http://adresse_ip:8000/docs/ *login: minioadmin & password: minioadminpassword* | http://adresse_ip:9001 | 
 
 
 
@@ -129,7 +129,7 @@ source "$HOME/.cargo/env"
 cargo --version
 rustc --version
 ```
-**Demarrage de l'api RUST (Axum)**
+* **Demarrage de l'api RUST (Axum)**
 ```bash
 # aller dans le repertoire rust-parser
 cd rust-parser
@@ -141,16 +141,13 @@ export MINIO_ENDPOINT_URL=http://localhost:9000
 
 cargo run --release
 ```
-**execution du script de benchmark** *s'assurer que pandas/polars(FastAPI) sont en cours d'exécution*
+* **execution du script de benchmark** *s'assurer que pandas/polars(FastAPI) sont en cours d'exécution*
 
 ```bash
 python benchmarks/bench_pandas_polars_rust.py nom_fichier.csv
 ```
 
-
-
 ### 4. Utilisation de l'API & Tracing
-L'interface de l'API est accessible sur `http://localhost:8000/docs` et l'interface SigNoz sur `http://localhost:8080`.
 
 🎯 **Extraction des colonnes :**
 ```bash
