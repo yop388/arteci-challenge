@@ -302,9 +302,18 @@ kubectl logs <nom-du-pod> -n signoz
 
 
 ### 2. Déploiement de l'API et de MinIO
-Pour déployer vos fichiers de configuration, appliquez les manifestes. L'API intègre un `initContainer` de sécurité qui met l'application en pause tant que le serveur de stockage MinIO n'est pas prêt sur le port 9000 :
+Grâce à l'activation préalable du stockage persistant (hostpath-storage) sur MicroK8s, le volume demandé par MinIO (minio-pvc de 5Go) va pouvoir s'associer instantanément.
+
+Pour déployer l'ensemble de l'application `(le serveur de stockage, le seeder de données et l'API)`, appliquer tous les manifestes du dossier d'un seul coup
 ```bash
+# Appliquer tous les fichiers YAML du dossier k8s
 kubectl apply -f k8s/
+```
+**Note sur la sécurité :** L'API intègre un initContainer nommé wait-for-minio. Il met automatiquement l'API en pause et attend que le conteneur MinIO soit totalement prêt et réponde sur le port 9000 avant de démarrer l'application.
+
+* **suivre le bon démarrage de votre API et de MinIO**
+```bash
+kubectl get pods --watch
 ```
 
 ### 3. Accès aux interfaces du cluster
