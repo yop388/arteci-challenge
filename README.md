@@ -148,7 +148,7 @@ cargo run --release
 python benchmarks/bench_pandas_polars_rust.py nom_fichier.csv
 ```
 
-### 4. Utilisation de l'API & Tracing
+### 5. Utilisation de l'API & Tracing
 
 🎯 **Extraction des colonnes :**
 ```bash
@@ -175,8 +175,64 @@ curl -X POST "http://localhost:8000/processDate" \
 
 L'infrastructure Kubernetes sépare l'application en modules isolés communicant via le réseau global du cluster (Cross-Namespace DNS). Les manifestes se trouvent dans le dossier `k8s/`.
 
-### 1. Déploiement de SigNoz via Helm
+### 1. Installation des prérequis
 En production, SigNoz s'installe via son gestionnaire de paquets officiel Helm dans son propre espace sécurisé :
+
+* **Mettre à jour l'index des paquets et installer les prérequis**
+```bash
+sudo apt-get update
+sudo apt-get install -y apt-transport-https ca-certificates curl gnupg
+```
+
+* **Télécharger la clé de signature publique du dépôt Kubernetes**
+```bash
+# Crée le dossier pour les clés si nécessaire
+sudo mkdir -p -m 755 /etc/apt/keyrings
+
+# Télécharge la clé
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+sudo chmod 644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+```
+
+* **Ajouter le dépôt APT de Kubernetes**
+```bash
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+sudo chmod 644 /etc/apt/sources.list.d/kubernetes.list
+```
+
+* **Installer kubectl**
+```bash
+sudo apt-get update
+sudo apt-get install -y kubectl
+```
+
+* **Vérifier l'installation**
+```bash
+kubectl version --client
+```
+
+* **Installer helm : Importer la clé GPG de Helm**
+```bash
+curl -fsSL https://packages.buildkite.com/helm-linux/helm-debian/gpgkey | gpg --dearmor | sudo tee /etc/apt/keyrings/helm.gpg > /dev/null
+```
+
+* **Ajouter le dépôt Helm à au sources**
+```bash
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/helm.gpg] https://packages.buildkite.com/helm-linux/helm-debian/any/ any main" | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
+```
+
+* **Installer Helm**
+```bash
+sudo apt-get update
+sudo apt-get install -y helm
+```
+* **Vérifier l'installation**
+```bash
+helm version
+```
+
+### 2. Déploiement de SigNoz via Helm
+
 ```bash
 # 1. Ajouter le dépôt de logiciels officiel de SigNoz
 helm repo add signoz https://charts.signoz.io
