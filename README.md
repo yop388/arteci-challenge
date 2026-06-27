@@ -68,6 +68,28 @@ docker start signoz-telemetrystore-clickhouse-0-0
 # Rejouer le script de configuration des tables utilisateurs
 docker start signoz-telemetrystore-clickhouse-user-scripts
 ```
+## 💾 Initialisation des Données & Création des Buckets (Seeding)
+
+Le projet utilise le script `api/src/seed_data.py` pour vérifier l'existence des compartiments de stockage nécessaires (`raw` et `processeddata`), les créer si besoin, et y téléverser un fichier CSV initial pour les tests.
+
+### 1. En Développement Local
+Exécutez simplement le script depuis votre machine hôte après avoir démarré vos conteneurs. Les connexions basculeront automatiquement sur `localhost` :
+```bash
+python api/src/seed_data.py
+```
+
+### 2. En Production sur Kubernetes
+Le déploiement intègre un **Job Kubernetes** autonome qui s'exécute directement à l'intérieur du cluster et communique avec MinIO via les adresses réseaux isolées.
+
+Pour provisionner les buckets et injecter les fichiers de tests en production :
+```bash
+kubectl apply -f k8s/seed-job.yaml
+```
+Vous pouvez suivre l'avancement du téléversement dans les logs du cluster avec :
+```bash
+kubectl logs job/arteci-api-seeder
+```
+
 
 ### 4. Utilisation de l'API & Tracing
 L'interface de l'API est accessible sur `http://localhost:8000/docs` et l'interface SigNoz sur `http://localhost:8080`.

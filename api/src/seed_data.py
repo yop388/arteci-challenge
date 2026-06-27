@@ -2,11 +2,23 @@ import os
 import boto3
 from botocore.client import Config
 
-# Configuration de la connexion locale MinIO
-MINIO_URL = "http://localhost:9000"
-ACCESS_KEY = "minioadmin"
-SECRET_KEY = "minioadminpassword"
+# --- MODIFICATION ICI : Lit l'environnement Docker/Kubernetes, ou utilise localhost par défaut ---
+MINIO_URL = os.getenv("MINIO_URL", "http://localhost:9000")
+ACCESS_KEY = os.getenv("ACCESS_KEY", "minioadmin")
+SECRET_KEY = os.getenv("SECRET_KEY", "minioadminpassword")
 BUCKET_NAME = "raw"
+PROCESSED_BUCKET = "processeddata"
+
+
+def ensure_buckets_exist(s3_client):
+    """Crée automatiquement les buckets s'ils n'existent pas."""
+    for bucket in [BUCKET_NAME, PROCESSED_BUCKET]:
+        try:
+            s3_client.head_bucket(Bucket=bucket)
+        except s3_client.exceptions.ClientError:
+            print(f"Création du bucket '{bucket}'...")
+            s3_client.create_bucket(Bucket=bucket)
+
 
 # remplacer ceci par le chemin absolu de l'un de notre CSV fournis
 # Pour le test, nous créons un faux fichier CSV à la volée s'il n'existe pas
@@ -34,13 +46,14 @@ def upload_to_minio():
         config=Config(signature_version="s3v4"),
         region_name="us-east-1" # Valeur requise par défaut, ignorée par MinIO
     )
+    ensure_buckets_exist(s3_client)
 
-    # Vérification de l'existence du fichier
+    # 2. Vérification de l'existence du fichier local
     if not os.path.exists(CSV_FILE_PATH):
         print("Fichier CSV non trouvé. Création d'un fichier de test...")
         create_sample_csv()
 
-    # Envoi du fichier
+    # 3. Envoi du fichier
     destination_name = os.path.basename(CSV_FILE_PATH)
     print(f"Téléversement de {CSV_FILE_PATH} vers le bucket '{BUCKET_NAME}'...")
 
