@@ -68,7 +68,7 @@ docker compose up -d
 
 |**Signoz**|**FastAPI**| **MinIO** | 
 | :--: | :--: | :--: |
-| http://adresse_ip:8080 | http://adresse_ip:8000/docs/ *login: minioadmin & password: minioadminpassword* | http://adresse_ip:9001 | 
+| http://adresse_ip:8080 | http://adresse_ip:8000/docs/ `login: minioadmin & password: minioadminpassword` | http://adresse_ip:9001 | 
 
 
 
@@ -111,6 +111,7 @@ kubectl logs job/arteci-api-seeder
 
 #### Compilation et lancement de l'API RUST en mode performance
 **Installer Cargo si nécessaire**
+
 *Mettre à jour le système et installer les prérequis*
 ```bash
 sudo apt update && sudo apt upgrade -y
@@ -186,7 +187,7 @@ helm repo update
 # 2. Installer MicroK8s
 sudo snap install microk8s --classic
 
-# 3. Ajouter votre utilisateur au groupe microk8s pour éviter d'utiliser 'sudo' à chaque fois
+# 3. Ajouter l'utilisateur au groupe microk8s pour éviter d'utiliser 'sudo' à chaque fois
 sudo usermod -a -G microk8s $USER
 mkdir -p ~/.kube
 chmod 0700 ~/.kube
