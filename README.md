@@ -316,9 +316,25 @@ kubectl apply -f k8s/
 kubectl get pods --watch
 ```
 
-### 3. Accès aux interfaces du cluster
-Pour ouvrir l'interface de SigNoz sur votre machine de développement locale depuis le cluster Kubernetes, utilisez une redirection de port :
+### 3. Accès aux interfaces et à l'API depuis Internet
+* **s'assurrer que l'interface graphique de Minio est aussi accessible depuis internet allors :**
 ```bash
-kubectl port-forward -n signoz svc/my-release-signoz-frontend 3301:3301
+#Modifier le type de service via le terminal
+kubectl patch svc minio -p '{"spec": {"type": "NodePort"}}'
 ```
-L'interface web de supervision sera instantanément disponible sur `http://localhost:3301`.
+```bash
+#Récupérer les ports externes attribués grace à la commande suivante pour voir quels ports aléatoires Kubernetes a généré
+kubectl get svc minio
+```
+```
+exemple de sortie :
+
+:~$ kubectl get svc minio
+NAME    TYPE       CLUSTER-IP      EXTERNAL-IP   PORT(S)                         AGE
+minio   NodePort   10.152.183.31   <none>        9000:30163/TCP,9001:31271/TCP   23m
+```
+|**Tableau de bord de supervision (SigNoz)**|**API (arteci-api-service)**|**Tableau de bord de MinIO**|
+| :--- |:--- |:--- |
+|URL d'accès : **`http://adresse_ip:30528`**|URL d'accès : **`http://adresse_ip:30080`**|URL d'accès : **`http://adresse_ip:31271`**|
+
+* **`NB: pour acceder depuis internet, s'assurer de la configuration du Security Group AWS de de instance EC2 et ajoutez une règle entrante (Custom TCP) pour autoriser le ports externes`**
