@@ -1,9 +1,0 @@
-/home/othniel/Téléchargements/Challenge ARTEFACT Recrutement/arteci-challenge/rust-parser/target/debug/deps/tokio_rustls-9c4993d0a51ed573.d: /home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-rustls-0.24.1/src/lib.rs /home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-rustls-0.24.1/src/client.rs /home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-rustls-0.24.1/src/common/mod.rs /home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-rustls-0.24.1/src/common/handshake.rs /home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-rustls-0.24.1/src/server.rs
-
-/home/othniel/Téléchargements/Challenge ARTEFACT Recrutement/arteci-challenge/rust-parser/target/debug/deps/libtokio_rustls-9c4993d0a51ed573.rmeta: /home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-rustls-0.24.1/src/lib.rs /home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-rustls-0.24.1/src/client.rs /home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-rustls-0.24.1/src/common/mod.rs /home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-rustls-0.24.1/src/common/handshake.rs /home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-rustls-0.24.1/src/server.rs
-
-/home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-rustls-0.24.1/src/lib.rs:
-/home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-rustls-0.24.1/src/client.rs:
-/home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-rustls-0.24.1/src/common/mod.rs:
-/home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-rustls-0.24.1/src/common/handshake.rs:
-/home/othniel/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-rustls-0.24.1/src/server.rs:

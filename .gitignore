@@ -10,6 +10,7 @@ venv/
 # Rust (Artefacts de compilation)
 /target/
 /api/bin/
+rust-parser/target/
 Cargo.lock.bak
 
 # Secrets (À ne JAMAIS commit)

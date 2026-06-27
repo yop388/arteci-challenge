@@ -1,1 +1,0 @@
-/home/othniel/Téléchargements/Challenge\ ARTEFACT\ Recrutement/arteci-challenge/rust-parser/target/release/arteci-api-rust: /home/othniel/Téléchargements/Challenge\ ARTEFACT\ Recrutement/arteci-challenge/rust-parser/src/main.rs
