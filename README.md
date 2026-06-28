@@ -171,7 +171,8 @@ curl -X POST "http://localhost:8000/processDate" \
 
 ---
 
-## ☸️ Déploiement Kubernetes (K8s) `Nous utilisons au choix un AWS EC2 m7i-flex.large pour les tests de deployement `
+## ☸️ Déploiement Kubernetes (K8s) 
+### `Nous utilisons au choix un AWS EC2 m7i-flex.large pour les tests de deploiement `
 
 L'infrastructure Kubernetes sépare l'application en modules isolés communicant via le réseau global du cluster (Cross-Namespace DNS). Les manifestes se trouvent dans le dossier `k8s/`.
 
